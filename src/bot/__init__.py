@@ -1,0 +1,1 @@
+"""Nyah-Chan bot package."""

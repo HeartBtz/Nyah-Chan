@@ -1,5 +1,7 @@
 import os
 import asyncio
+import logging
+from importlib import util as importlib_util
 from dotenv import load_dotenv, find_dotenv
 import discord
 
@@ -14,14 +16,44 @@ def create_client() -> discord.Client:
     return client
 
 
+def setup_logging():
+    """Configure basic logging.
+
+    LOG_LEVEL (.env) peut être DEBUG, INFO, WARNING, ERROR, CRITICAL.
+    """
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    logging.getLogger("discord.gateway").setLevel(logging.WARNING)  # moins de bruit
+
+
+def preflight_checks() -> bool:
+    """Effectue des vérifications avant de lancer le client."""
+    logger = logging.getLogger("nyahchan")
+    # audioop est supprimé en Python 3.13 et utilisé par discord.py pour l'audio
+    if importlib_util.find_spec("audioop") is None:
+        logger.warning(
+            "Module 'audioop' absent. Si vous n'utilisez pas les fonctions audio, vous pouvez ignorer. "
+            "Sinon installez 'audioop-lts' (déjà tenté automatiquement) ou utilisez Python 3.12."\
+        )
+    return True
+
+
 async def async_main():
     load_dotenv(find_dotenv())
+    setup_logging()
+    logger = logging.getLogger("nyahchan")
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        print("DISCORD_TOKEN manquant. Ajoutez-le dans un fichier .env à la racine de python_miwa_bot/ ou exportez la variable d'environnement.")
+        logger.error("DISCORD_TOKEN manquant. Ajoutez-le dans .env à la racine ou exportez la variable.")
         return
 
     client = create_client()
+    preflight_checks()
 
     # Import and setup events after .env is loaded
     from .events.ready import setup_ready_event
@@ -32,11 +64,12 @@ async def async_main():
     try:
         await client.start(token)
     except discord.errors.PrivilegedIntentsRequired:
-        print("[ERREUR] Intents privilégiés manquants.\n" \
-              "Activez dans le portail développeur Discord (Application -> Bot -> Privileged Gateway Intents):\n" \
-              " - Server Members Intent (si USE_MEMBERS_INTENT=1)\n" \
-              " - Message Content Intent (obligatoire pour détecter le mot déclencheur)\n" \
-              "Ou définissez USE_MEMBERS_INTENT=0 dans votre .env pour désactiver l'intent Members si vous n'en avez pas strictement besoin.")
+        logger.error(
+            "Intents privilégiés manquants. Activez dans le portail développeur Discord (Application -> Bot -> Privileged Gateway Intents):\n"
+            " - Server Members Intent (si USE_MEMBERS_INTENT=1)\n"
+            " - Message Content Intent (obligatoire)\n"
+            "Ou définissez USE_MEMBERS_INTENT=0 pour désactiver l'intent Members si inutile."
+        )
         return
 
 
