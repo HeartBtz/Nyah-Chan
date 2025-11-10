@@ -1,0 +1,15 @@
+{
+  "commands": [
+    {
+      "name": "pokedex",
+      "allowed_user_ids": [123456789012345678],
+      "role_name": "Pokémon de Dory",
+      "gif_path": "pokeball-fable.gif"
+    },
+    {
+      "name": "badge",
+      "allowed_user_ids": [123456789012345678, 987654321098765432],
+      "role_name": "Champion·ne"
+    }
+  ]
+}

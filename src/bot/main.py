@@ -58,6 +58,7 @@ async def async_main():
     # Import features to ensure registration
     from .features import role_triggers  # noqa: F401
     from .features import commands  # noqa: F401
+    from .features import grant_commands  # noqa: F401
     from .features.registry import setup_all
 
     # Import and setup events after .env is loaded
