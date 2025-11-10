@@ -59,6 +59,7 @@ async def async_main():
     from .features import role_triggers  # noqa: F401
     from .features import commands  # noqa: F401
     from .features import grant_commands  # noqa: F401
+    from .features import ollama_qna  # noqa: F401
     from .features.registry import setup_all
 
     # Import and setup events after .env is loaded
