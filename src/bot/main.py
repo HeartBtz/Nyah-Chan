@@ -55,11 +55,17 @@ async def async_main():
     client = create_client()
     preflight_checks()
 
+    # Import features to ensure registration
+    from .features import role_triggers  # noqa: F401
+    from .features import commands  # noqa: F401
+    from .features.registry import setup_all
+
     # Import and setup events after .env is loaded
     from .events.ready import setup_ready_event
     from .events.message_create import setup_message_event
     setup_ready_event(client)
     setup_message_event(client)
+    setup_all(client)
 
     try:
         await client.start(token)
