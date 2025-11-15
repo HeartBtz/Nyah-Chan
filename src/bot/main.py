@@ -11,6 +11,7 @@ from .features import grant_commands  # noqa: F401
 from .features import ollama_qna  # noqa: F401
 from .features import commands  # noqa: F401
 from .features import registry as feature_registry
+from .moderation import ModerationCommands
 
 
 def create_client() -> discord.Client:
@@ -61,6 +62,11 @@ async def async_main():
 
     client = create_client()
     preflight_checks()
+
+    # Commandes de modération (slash commands)
+    moderation = ModerationCommands(client)
+    # on stocke l'instance sur le client pour la sync dans on_ready
+    setattr(client, "moderation", moderation)
 
     # Features sont déjà importées en haut pour pouvoir utiliser le registry
     from .features.registry import setup_all, reload_all
