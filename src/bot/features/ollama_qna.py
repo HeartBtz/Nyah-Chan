@@ -15,17 +15,40 @@ class OllamaQnAFeature:
     name = "ollama_qna"
 
     def __init__(self) -> None:
-        raw_enabled = os.getenv("OLLAMA_ENABLED", "0")
-        self.enabled = str(raw_enabled).strip().lower() in ("1", "true", "yes", "on")
-        self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.model = os.getenv("OLLAMA_MODEL", "llama3")
-        self.timeout = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+        # L'activation et la configuration dépendent de .env, évalués plus tard dans setup()
+        self.enabled: bool = False
+        self.base_url: str | None = None
+        self.model: str | None = None
+        self.timeout: int | None = None
         self.prefix = os.getenv("PREFIX", "!")  # Could reuse but we rely on mention; kept for possible future expansion
         self.max_chunk = 1900  # keep some margin under Discord 2000 char limit
 
     def setup(self, client: discord.Client) -> None:  # noqa: D401
+        # Décide ici, après que .env ait été chargé dans main.async_main()
+        self.enabled = os.getenv("OLLAMA_ENABLED", "0").strip() == "1"
         if not self.enabled:
             logger.info(f"[ollama] Désactivé (OLLAMA_ENABLED={os.getenv('OLLAMA_ENABLED')!r})")
+            return
+
+        # Charger la configuration depuis l'environnement
+        self.base_url = os.getenv("OLLAMA_BASE_URL")
+        self.model = os.getenv("OLLAMA_MODEL")
+        timeout_raw = os.getenv("OLLAMA_TIMEOUT")
+
+        if not self.base_url or not self.model or timeout_raw is None:
+            logger.error(
+                "[ollama] Activé dans .env mais configuration incomplète: "
+                f"OLLAMA_BASE_URL={self.base_url!r}, OLLAMA_MODEL={self.model!r}, OLLAMA_TIMEOUT={timeout_raw!r}. "
+                "Désactivation de la feature."
+            )
+            self.enabled = False
+            return
+
+        try:
+            self.timeout = int(timeout_raw)
+        except ValueError:
+            logger.error(f"[ollama] OLLAMA_TIMEOUT invalide: {timeout_raw!r}. Désactivation de la feature.")
+            self.enabled = False
             return
         logger.info(
             f"[ollama] Activé | base_url={self.base_url} | model={self.model} | timeout={self.timeout}s | max_chunk={self.max_chunk}"
