@@ -65,6 +65,7 @@ Nyah‑Chan est un bot Discord modulaire écrit en Python, conçu pour :
 	- `/ui/roles` : gestion de `role_triggers`.
 	- `/ui/grant` : gestion de `grant_commands`.
 - Sauvegarde via API (JSON) qui réécrit directement les fichiers de configuration.
+- Bouton global **"Recharger les configs"** dans la barre de navigation pour recharger à chaud les features (sans redémarrer le bot) après modification des JSON.
 
 ---
 
@@ -317,6 +318,8 @@ Une fois `run_bot_with_web.py` lancé :
 	- lister les embeds,
 	- définir les **triggers** (séparés par des virgules),
 	- configurer la couleur, le titre, la description, les champs, le footer, les URLs d’images,
+	- gérer les champs d’embed via un petit formulaire (nom, valeur, inline) sans jamais écrire de JSON à la main,
+	- visualiser en direct un aperçu de l’embed (titre, description, champs, footer, thumbnail),
 	- sauvegarder (écrit le JSON sur disque).
 
 ### `/ui/roles`
@@ -336,7 +339,7 @@ Une fois `run_bot_with_web.py` lancé :
 	- sauvegarder la liste.
 
 > Note : les features chargent les configs au démarrage.  
-> Après modification via la webGUI, redémarre le bot pour que les changements soient pris en compte (un rechargement “à chaud” pourra être ajouté plus tard).
+> Après modification via la webGUI, clique sur **"Recharger les configs"** dans la barre du haut pour appliquer les changements immédiatement dans le bot, sans redémarrage.
 
 ---
 

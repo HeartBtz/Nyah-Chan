@@ -202,7 +202,9 @@ cython_debug/
 .cursorindexingignore
 
 # --- Nyah-Chan bot config JSON (ignore real config, keep examples) ---
-
+grant_commands.json
+role_triggers.json
+keyword_responses.json
 
 # Marimo
 marimo/_static/
