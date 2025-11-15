@@ -15,7 +15,8 @@ class OllamaQnAFeature:
     name = "ollama_qna"
 
     def __init__(self) -> None:
-        self.enabled = os.getenv("OLLAMA_ENABLED", "0") not in ("0", "false", "False")
+        raw_enabled = os.getenv("OLLAMA_ENABLED", "0")
+        self.enabled = str(raw_enabled).strip().lower() in ("1", "true", "yes", "on")
         self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model = os.getenv("OLLAMA_MODEL", "llama3")
         self.timeout = int(os.getenv("OLLAMA_TIMEOUT", "60"))
@@ -24,7 +25,7 @@ class OllamaQnAFeature:
 
     def setup(self, client: discord.Client) -> None:  # noqa: D401
         if not self.enabled:
-            logger.info("[ollama] Désactivé (OLLAMA_ENABLED=0)")
+            logger.info(f"[ollama] Désactivé (OLLAMA_ENABLED={os.getenv('OLLAMA_ENABLED')!r})")
             return
         logger.info(
             f"[ollama] Activé | base_url={self.base_url} | model={self.model} | timeout={self.timeout}s | max_chunk={self.max_chunk}"
