@@ -1,0 +1,63 @@
+{
+  "embeds": [
+    {
+      "name": "egirl_warning",
+      "triggers": ["egirl", "e-girl", "e girl"],
+      "title": "À propos du terme « egirl »",
+      "description": "Merci d'éviter ce terme sur le serveur. On préfère un vocabulaire respectueux et bienveillant envers tout le monde.",
+      "color": "red",
+      "fields": [
+        {
+          "name": "Ce qu'on ne veut pas ❌",
+          "value": "- Étiquettes dégradantes ou sexualisantes.\n- Blagues lourdes qui mettent les gens mal à l'aise.",
+          "inline": false
+        },
+        {
+          "name": "Ce qu'on veut à la place ✅",
+          "value": "- Des discussions chill et respectueuses.\n- De la bienveillance, peu importe le genre ou l'apparence.\n- Demander avant de faire des vannes limites.",
+          "inline": false
+        }
+      ],
+      "footer": "En cas de doute, contacte un membre du staff ✨",
+      "image_url": null,
+      "thumbnail_url": null
+    },
+    {
+      "name": "rules_summary",
+      "triggers": ["rules", "regles", "règlement"],
+      "title": "📜 Règlement du serveur",
+      "description": "Clique sur les sections ci-dessous pour accéder aux messages correspondants.",
+      "color": "#3498db",
+      "fields": [
+        {
+          "name": "🔰 Introduction",
+          "value": "Présentation générale du serveur et de son ambiance.",
+          "inline": false
+        },
+        {
+          "name": "📏 Règlement",
+          "value": "Les règles à respecter pour que tout le monde se sente bien.",
+          "inline": false
+        },
+        {
+          "name": "📨 Contactez-nous",
+          "value": "Que faire et qui ping en cas de problème.",
+          "inline": false
+        },
+        {
+          "name": "🌐 Autres serveurs",
+          "value": "Lien vers les autres serveurs partenaires.",
+          "inline": false
+        },
+        {
+          "name": "🎮 Accéder au serveur",
+          "value": "Informations pratiques (IP, code, etc.).",
+          "inline": false
+        }
+      ],
+      "footer": "Lis ces messages avant de participer pour éviter les malentendus.",
+      "image_url": null,
+      "thumbnail_url": null
+    }
+  ]
+}
