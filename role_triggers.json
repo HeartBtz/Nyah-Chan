@@ -1,7 +1,0 @@
-{
-  "triggers": [
-    { "trigger": "patate", "role_name": "Patate" },
-    { "trigger": "carotte", "role_name": "Carotte", "remove_trigger": "j'enlève carotte" },
-    { "trigger": "miwa", "role_name": "Esclave de Miwa", "remove_trigger": "Heart est le meilleur" }
-  ]
-}
