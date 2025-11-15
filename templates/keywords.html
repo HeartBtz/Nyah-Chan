@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <h2>Keyword responses</h2>
+    <p class="small">Chaque entrée correspond à un embed déclenché par un ou plusieurs mots-clés.</p>
+</div>
+
+<div class="card">
+    <h2>Éditer un embed</h2>
+    <form id="embed-form" onsubmit="saveEmbed(event)">
+        <div class="row">
+            <div class="col">
+                <label>Nom interne (facultatif)</label>
+                <input type="text" id="name" placeholder="egirl_warning">
+            </div>
+            <div class="col">
+                <label>Couleur (nom ou hex)</label>
+                <input type="text" id="color" placeholder="red ou #ff0000">
+            </div>
+        </div>
+        <label>Triggers (séparés par des virgules)</label>
+        <input type="text" id="triggers" placeholder="egirl, e-girl, e girl">
+
+        <label>Titre</label>
+        <input type="text" id="title" placeholder="À propos du terme « egirl »">
+
+        <label>Description</label>
+        <textarea id="description" placeholder="Texte principal de l'embed..."></textarea>
+
+        <label>Champs (JSON simplifié)</label>
+        <textarea id="fields" class="small" placeholder='[
+  {"name": "Titre", "value": "Texte", "inline": false}
+]'></textarea>
+
+        <label>Footer</label>
+        <input type="text" id="footer" placeholder="Texte de bas de l'embed">
+
+        <label>Image URL (optionnel)</label>
+        <input type="text" id="image_url" placeholder="https://...">
+
+        <label>Thumbnail URL (optionnel)</label>
+        <input type="text" id="thumbnail_url" placeholder="https://...">
+
+        <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <button type="submit">💾 Enregistrer</button>
+            <button type="button" class="secondary" onclick="resetForm()">Réinitialiser</button>
+            <button type="button" class="danger" onclick="deleteCurrentEmbed()">🗑️ Supprimer l'embed courant</button>
+            <span id="status" class="status"></span>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Liste des embeds</h2>
+    <table>
+        <thead>
+        <tr>
+            <th>Nom</th>
+            <th>Triggers</th>
+            <th>Titre</th>
+            <th>Actions</th>
+        </tr>
+        </thead>
+        <tbody id="embed-table-body">
+        {% for e in embeds %}
+            <tr>
+                <td>{{ e.name or '(sans nom)' }}</td>
+                <td>
+                    {% for t in e.triggers %}<span class="tag">{{ t }}</span>{% endfor %}
+                </td>
+                <td>{{ e.title }}</td>
+                <td>
+                    <button type="button" class="secondary" onclick="loadFromRow({{ loop.index0 }})">Éditer</button>
+                    <button type="button" class="danger" onclick="deleteEmbed({{ loop.index0 }})">🗑️</button>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+let embeds = {{ embeds | tojson | safe }};
+let currentIndex = null;
+
+function refreshTable() {
+    const tbody = document.getElementById('embed-table-body');
+    tbody.innerHTML = '';
+    embeds.forEach((e, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${e.name || '(sans nom)'}</td>
+            <td>${(e.triggers || []).map(t => `<span class="tag">${t}</span>`).join(' ')}</td>
+            <td>${e.title || ''}</td>
+            <td>
+                <button type="button" class="secondary" onclick="loadFromRow(${idx})">Éditer</button>
+                <button type="button" class="danger" onclick="deleteEmbed(${idx})">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function loadFromRow(index) {
+    const e = embeds[index];
+    currentIndex = index;
+    document.getElementById('name').value = e.name || '';
+    document.getElementById('color').value = e.color || '';
+    document.getElementById('triggers').value = (e.triggers || []).join(', ');
+    document.getElementById('title').value = e.title || '';
+    document.getElementById('description').value = e.description || '';
+    document.getElementById('fields').value = JSON.stringify(e.fields || [], null, 2);
+    document.getElementById('footer').value = e.footer || '';
+    document.getElementById('image_url').value = e.image_url || '';
+    document.getElementById('thumbnail_url').value = e.thumbnail_url || '';
+    setStatus('Embed chargé.', true);
+}
+
+function resetForm() {
+    currentIndex = null;
+    document.getElementById('embed-form').reset();
+    document.getElementById('fields').value = '';
+    setStatus('Formulaire réinitialisé.', true);
+}
+
+function deleteCurrentEmbed() {
+    if (currentIndex === null) {
+        setStatus("Aucun embed sélectionné à supprimer.", false);
+        return;
+    }
+    if (!confirm('Supprimer cet embed ?')) {
+        return;
+    }
+    embeds.splice(currentIndex, 1);
+    currentIndex = null;
+    persistEmbeds('Embed supprimé.');
+}
+
+async function deleteEmbed(index) {
+    if (!confirm('Supprimer cet embed ?')) {
+        return;
+    }
+    embeds.splice(index, 1);
+    if (currentIndex === index) {
+        currentIndex = null;
+        document.getElementById('embed-form').reset();
+        document.getElementById('fields').value = '';
+    }
+    await persistEmbeds('Embed supprimé.');
+}
+
+function setStatus(msg, ok) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + (ok ? 'ok' : 'err');
+}
+
+async function saveEmbed(event) {
+    event.preventDefault();
+    try {
+        const name = document.getElementById('name').value.trim();
+        const color = document.getElementById('color').value.trim();
+        const triggers = document.getElementById('triggers').value.split(',').map(t => t.trim()).filter(Boolean);
+        const title = document.getElementById('title').value.trim();
+        const description = document.getElementById('description').value;
+        const footer = document.getElementById('footer').value || null;
+        const image_url = document.getElementById('image_url').value || null;
+        const thumbnail_url = document.getElementById('thumbnail_url').value || null;
+
+        let fields = [];
+        const rawFields = document.getElementById('fields').value.trim();
+        if (rawFields) {
+            try {
+                fields = JSON.parse(rawFields);
+                if (!Array.isArray(fields)) throw new Error('fields doit être un tableau');
+            } catch (e) {
+                setStatus('Erreur JSON dans les champs : ' + e.message, false);
+                return;
+            }
+        }
+
+        const embed = { name, triggers, title, description, color, fields, footer, image_url, thumbnail_url };
+
+        if (currentIndex === null) {
+            embeds.push(embed);
+        } else {
+            embeds[currentIndex] = embed;
+        }
+
+        await persistEmbeds('Sauvegardé avec succès.');
+    } catch (e) {
+        setStatus('Erreur: ' + e, false);
+    }
+}
+
+async function persistEmbeds(successMessage) {
+    try {
+        const resp = await fetch('/api/keywords', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ embeds }),
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            setStatus('Erreur sauvegarde: ' + (data.error || 'inconnue'), false);
+            return;
+        }
+        refreshTable();
+        setStatus(successMessage, true);
+    } catch (e) {
+        setStatus('Erreur: ' + e, false);
+    }
+}
+
+// init
+refreshTable();
+</script>
+{% endblock %}

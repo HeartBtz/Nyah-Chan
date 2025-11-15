@@ -1,0 +1,30 @@
+{
+  "embeds": [
+    {
+      "color": "red",
+      "description": "Merci d'éviter ce terme sur le serveur. On préfère un vocabulaire respectueux et bienveillant envers tout le monde.",
+      "fields": [
+        {
+          "inline": false,
+          "name": "Ce qu'on ne veut pas ❌",
+          "value": "- Étiquettes dégradantes ou sexualisantes.\n- Blagues lourdes qui mettent les gens mal à l'aise."
+        },
+        {
+          "inline": false,
+          "name": "Ce qu'on veut à la place ✅",
+          "value": "- Des discussions chill et respectueuses.\n- De la bienveillance, peu importe le genre ou l'apparence.\n- Demander avant de faire des vannes limites."
+        }
+      ],
+      "footer": "En cas de doute, contacte un membre du staff ✨",
+      "image_url": null,
+      "name": "egirl_warning",
+      "thumbnail_url": null,
+      "title": "À propos du terme « egirl »",
+      "triggers": [
+        "egirl",
+        "e-girl",
+        "e girl"
+      ]
+    }
+  ]
+}

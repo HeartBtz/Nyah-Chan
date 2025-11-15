@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <h2>Grant commands</h2>
+    <p class="small">Commandes spéciales qui attribuent des rôles avec un préfixe (ex: !vip).</p>
+</div>
+
+<div class="card">
+    <h2>Éditer une commande</h2>
+    <form id="grant-form" onsubmit="saveCommand(event)">
+        <div class="row">
+            <div class="col">
+                <label>Nom de la commande (sans préfixe)</label>
+                <input type="text" id="name" placeholder="vip">
+            </div>
+            <div class="col">
+                <label>Nom du rôle</label>
+                <input type="text" id="role_name" placeholder="VIP">
+            </div>
+        </div>
+        <label>IDs utilisateurs autorisés (séparés par des virgules)</label>
+        <input type="text" id="allowed_user_ids" placeholder="123456789012345678, 987654321098765432">
+
+        <label>Chemin GIF (optionnel)</label>
+        <input type="text" id="gif_path" placeholder="pokeball-fable.gif">
+
+        <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <button type="submit">💾 Enregistrer</button>
+            <button type="button" class="secondary" onclick="resetForm()">Réinitialiser</button>
+            <button type="button" class="danger" onclick="deleteCurrentCommand()">🗑️ Supprimer la commande courante</button>
+            <span id="status" class="status"></span>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Liste des commandes</h2>
+    <table>
+        <thead>
+        <tr>
+            <th>Nom</th>
+            <th>Rôle</th>
+            <th>IDs autorisés</th>
+            <th>GIF</th>
+            <th>Actions</th>
+        </tr>
+        </thead>
+        <tbody id="commands-table-body">
+        </tbody>
+    </table>
+</div>
+
+<script>
+let commandsData = [];
+let currentIndex = null;
+
+function refreshTable() {
+    const tbody = document.getElementById('commands-table-body');
+    tbody.innerHTML = '';
+    commandsData.forEach((c, idx) => {
+        const tr = document.createElement('tr');
+        const ids = (c.allowed_user_ids || []).join(', ');
+        tr.innerHTML = `
+            <td>${c.name}</td>
+            <td>${c.role_name}</td>
+            <td>${ids}</td>
+            <td>${c.gif_path || ''}</td>
+            <td>
+                <button type="button" class="secondary" onclick="loadFromRow(${idx})">Éditer</button>
+                <button type="button" class="danger" onclick="deleteCommand(${idx})">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function loadFromRow(index) {
+    const c = commandsData[index];
+    currentIndex = index;
+    document.getElementById('name').value = c.name || '';
+    document.getElementById('role_name').value = c.role_name || '';
+    document.getElementById('allowed_user_ids').value = (c.allowed_user_ids || []).join(', ');
+    document.getElementById('gif_path').value = c.gif_path || '';
+    setStatus('Commande chargée.', true);
+}
+
+function resetForm() {
+    currentIndex = null;
+    document.getElementById('grant-form').reset();
+    setStatus('Formulaire réinitialisé.', true);
+}
+
+function deleteCurrentCommand() {
+    if (currentIndex === null) {
+        setStatus('Aucune commande sélectionnée à supprimer.', false);
+        return;
+    }
+    if (!confirm('Supprimer cette commande ?')) {
+        return;
+    }
+    commandsData.splice(currentIndex, 1);
+    currentIndex = null;
+    persistCommands('Commande supprimée.');
+}
+
+async function deleteCommand(index) {
+    if (!confirm('Supprimer cette commande ?')) {
+        return;
+    }
+    commandsData.splice(index, 1);
+    if (currentIndex === index) {
+        currentIndex = null;
+        document.getElementById('grant-form').reset();
+    }
+    await persistCommands('Commande supprimée.');
+}
+
+function setStatus(msg, ok) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + (ok ? 'ok' : 'err');
+}
+
+async function saveCommand(event) {
+    event.preventDefault();
+    const name = document.getElementById('name').value.trim().toLowerCase();
+    const role_name = document.getElementById('role_name').value.trim();
+    const allowed_raw = document.getElementById('allowed_user_ids').value;
+    const gif_path = document.getElementById('gif_path').value || null;
+
+    if (!name || !role_name) {
+        setStatus('Nom et rôle sont obligatoires.', false);
+        return;
+    }
+
+    const allowed_user_ids = allowed_raw.split(',').map(x => x.trim()).filter(Boolean);
+
+    const entry = { name, role_name, allowed_user_ids, gif_path };
+    if (currentIndex === null) {
+        commandsData.push(entry);
+    } else {
+        commandsData[currentIndex] = entry;
+    }
+
+    await persistCommands('Sauvegardé avec succès.');
+}
+
+async function persistCommands(successMessage) {
+    const resp = await fetch('/api/grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commands: commandsData }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+        setStatus('Erreur sauvegarde: ' + (data.error || 'inconnue'), false);
+        return;
+    }
+    refreshTable();
+    setStatus(successMessage, true);
+}
+
+async function loadInitial() {
+    const resp = await fetch('/api/grant');
+    const data = await resp.json();
+    commandsData = data.commands || [];
+    refreshTable();
+}
+
+loadInitial();
+</script>
+{% endblock %}

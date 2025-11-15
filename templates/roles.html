@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <h2>Role triggers</h2>
+    <p class="small">Définis les mots-clés qui ajoutent ou retirent automatiquement des rôles.</p>
+</div>
+
+<div class="card">
+    <h2>Éditer un trigger</h2>
+    <form id="trigger-form" onsubmit="saveTrigger(event)">
+        <div class="row">
+            <div class="col">
+                <label>Mot-clé (trigger)</label>
+                <input type="text" id="trigger" placeholder="ex: je veux le rôle vip">
+            </div>
+            <div class="col">
+                <label>Rôle</label>
+                <input type="text" id="role_name" placeholder="Nom du rôle Discord">
+            </div>
+        </div>
+        <label>Mot-clé de retrait (optionnel)</label>
+        <input type="text" id="remove_trigger" placeholder="ex: enlever vip">
+
+        <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <button type="submit">💾 Enregistrer</button>
+            <button type="button" class="secondary" onclick="resetForm()">Réinitialiser</button>
+            <button type="button" class="danger" onclick="deleteCurrentTrigger()">🗑️ Supprimer le trigger courant</button>
+            <span id="status" class="status"></span>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Liste des triggers</h2>
+    <table>
+        <thead>
+        <tr>
+            <th>Trigger</th>
+            <th>Rôle</th>
+            <th>Remove trigger</th>
+            <th>Actions</th>
+        </tr>
+        </thead>
+        <tbody id="triggers-table-body">
+        </tbody>
+    </table>
+</div>
+
+<script>
+let triggersData = [];
+let currentIndex = null;
+
+function refreshTable() {
+    const tbody = document.getElementById('triggers-table-body');
+    tbody.innerHTML = '';
+    triggersData.forEach((t, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${t.trigger}</td>
+            <td>${t.role_name}</td>
+            <td>${t.remove_trigger || ''}</td>
+            <td>
+                <button type="button" class="secondary" onclick="loadFromRow(${idx})">Éditer</button>
+                <button type="button" class="danger" onclick="deleteTrigger(${idx})">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function loadFromRow(index) {
+    const t = triggersData[index];
+    currentIndex = index;
+    document.getElementById('trigger').value = t.trigger || '';
+    document.getElementById('role_name').value = t.role_name || '';
+    document.getElementById('remove_trigger').value = t.remove_trigger || '';
+    setStatus('Trigger chargé.', true);
+}
+
+function resetForm() {
+    currentIndex = null;
+    document.getElementById('trigger-form').reset();
+    setStatus('Formulaire réinitialisé.', true);
+}
+
+function deleteCurrentTrigger() {
+    if (currentIndex === null) {
+        setStatus('Aucun trigger sélectionné à supprimer.', false);
+        return;
+    }
+    if (!confirm('Supprimer ce trigger ?')) {
+        return;
+    }
+    triggersData.splice(currentIndex, 1);
+    currentIndex = null;
+    persistTriggers('Trigger supprimé.');
+}
+
+async function deleteTrigger(index) {
+    if (!confirm('Supprimer ce trigger ?')) {
+        return;
+    }
+    triggersData.splice(index, 1);
+    if (currentIndex === index) {
+        currentIndex = null;
+        document.getElementById('trigger-form').reset();
+    }
+    await persistTriggers('Trigger supprimé.');
+}
+
+function setStatus(msg, ok) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + (ok ? 'ok' : 'err');
+}
+
+async function saveTrigger(event) {
+    event.preventDefault();
+    const trigger = document.getElementById('trigger').value.trim().toLowerCase();
+    const role_name = document.getElementById('role_name').value.trim();
+    const remove_trigger = document.getElementById('remove_trigger').value.trim() || null;
+
+    if (!trigger || !role_name) {
+        setStatus('Trigger et rôle sont obligatoires.', false);
+        return;
+    }
+
+    const entry = { trigger, role_name, remove_trigger };
+    if (currentIndex === null) {
+        triggersData.push(entry);
+    } else {
+        triggersData[currentIndex] = entry;
+    }
+
+    await persistTriggers('Sauvegardé avec succès.');
+}
+
+async function persistTriggers(successMessage) {
+    const resp = await fetch('/api/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ triggers: triggersData }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+        setStatus('Erreur sauvegarde: ' + (data.error || 'inconnue'), false);
+        return;
+    }
+    refreshTable();
+    setStatus(successMessage, true);
+}
+
+async function loadInitial() {
+    const resp = await fetch('/api/roles');
+    const data = await resp.json();
+    triggersData = data.triggers || [];
+    refreshTable();
+}
+
+loadInitial();
+</script>
+{% endblock %}

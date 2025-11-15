@@ -1,3 +1,6 @@
 discord.py==2.3.2
 python-dotenv==1.0.1
 aiohttp==3.9.5
+fastapi==0.112.0
+uvicorn[standard]==0.30.5
+Jinja2==3.1.4

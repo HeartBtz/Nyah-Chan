@@ -8,6 +8,7 @@ from typing import Dict, List
 import discord
 
 from .registry import register
+from ..config.keyword_responses_store import load_keyword_responses
 
 
 logger = logging.getLogger("nyahchan.feature.keyword_responses")
@@ -71,12 +72,11 @@ class KeywordResponsesFeature:
         self._trigger_index: Dict[str, KeywordEmbedConfig] = {}
 
     def setup(self, client: discord.Client) -> None:  # noqa: D401
-        # Chargement de la configuration depuis JSON
+        # Chargement de la configuration depuis JSON (utilise le store partagé)
         path = os.getenv(CONFIG_ENV, DEFAULT_CONFIG_PATH)
         if path and os.path.exists(path):
             try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                data = load_keyword_responses(path)
                 embeds_data = data.get("embeds", [])
                 for item in embeds_data:
                     triggers = [str(t).strip() for t in item.get("triggers", []) if str(t).strip()]
