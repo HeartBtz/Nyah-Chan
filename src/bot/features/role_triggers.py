@@ -27,9 +27,8 @@ class RoleTriggersFeature:
     def __init__(self) -> None:
         self.triggers: List[RoleTrigger] = []
         self.reactions_enabled = os.getenv("REACTIONS_ENABLED", "1") not in ("0", "false", "False")
-
-    def setup(self, client: discord.Client) -> None:  # noqa: D401
-        # Charger config
+    def _load_from_config(self) -> None:
+        self.triggers.clear()
         if os.path.exists(CONFIG_PATH):
             try:
                 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -54,6 +53,13 @@ class RoleTriggersFeature:
             if env_trigger and env_role:
                 self.triggers.append(RoleTrigger(env_trigger.lower(), env_role, env_remove.lower() if env_remove else None))
                 logger.info("Fallback sur variables d'environnement pour triggers de rôles.")
+
+    def setup(self, client: discord.Client) -> None:  # noqa: D401
+        self._load_from_config()
+
+    def reload(self) -> None:
+        """Recharger la configuration des triggers depuis le JSON/env."""
+        self._load_from_config()
 
     async def _ensure_role(self, guild: discord.Guild, role_name: str) -> discord.Role | None:
         for r in guild.roles:

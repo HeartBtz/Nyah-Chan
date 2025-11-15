@@ -25,6 +25,17 @@ from .config.grant_commands_store import (
 
 logger = logging.getLogger("nyahchan.web")
 
+_reload_callback = None
+
+
+def set_reload_callback(callback) -> None:
+    """Enregistrer un callback de rechargement côté bot.
+
+    Le callback sera appelé sans argument quand l'API /api/reload est déclenchée.
+    """
+    global _reload_callback
+    _reload_callback = callback
+
 
 app = FastAPI(title="Nyah-Chan Admin")
 
@@ -131,6 +142,28 @@ async def api_save_grant(payload: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Saving grant commands (%d commands)", len(commands))
     save_grant_commands({"commands": commands})
     return {"ok": True}
+
+
+# ---------- API: RELOAD (BOT CONFIG) ----------
+
+
+@app.post("/api/reload", response_class=JSONResponse)
+async def api_reload() -> Dict[str, Any]:
+    """Demander au bot de recharger ses configurations depuis les JSON.
+
+    Nécessite que `set_reload_callback` ait été appelé côté bot.
+    """
+    if _reload_callback is None:
+        logger.warning("Aucun reload_callback enregistré côté bot.")
+        return {"ok": False, "error": "reload_callback non configuré côté bot"}
+
+    try:
+        _reload_callback()
+        logger.info("Reload des features demandé via /api/reload")
+        return {"ok": True}
+    except Exception as e:
+        logger.error("Erreur lors du reload des features: %s", e)
+        return {"ok": False, "error": str(e)}
 
 
 # Helper pour lancer FastAPI avec Uvicorn à partir d'une boucle existante

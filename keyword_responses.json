@@ -1,30 +1,31 @@
 {
   "embeds": [
     {
-      "color": "red",
-      "description": "Merci d'éviter ce terme sur le serveur. On préfère un vocabulaire respectueux et bienveillant envers tout le monde.",
-      "fields": [
-        {
-          "inline": false,
-          "name": "Ce qu'on ne veut pas ❌",
-          "value": "- Étiquettes dégradantes ou sexualisantes.\n- Blagues lourdes qui mettent les gens mal à l'aise."
-        },
-        {
-          "inline": false,
-          "name": "Ce qu'on veut à la place ✅",
-          "value": "- Des discussions chill et respectueuses.\n- De la bienveillance, peu importe le genre ou l'apparence.\n- Demander avant de faire des vannes limites."
-        }
-      ],
-      "footer": "En cas de doute, contacte un membre du staff ✨",
-      "image_url": null,
-      "name": "egirl_warning",
-      "thumbnail_url": null,
-      "title": "À propos du terme « egirl »",
+      "name": "Egirl",
       "triggers": [
         "egirl",
         "e-girl",
         "e girl"
-      ]
+      ],
+      "title": "**Yo** petite *E-Girl*, ou presque...",
+      "description": "Voici ici les règles spécialement écrites pour les E-Girls ! ",
+      "color": "red",
+      "fields": [
+        {
+          "inline": false,
+          "name": "Merci de les respecter",
+          "value": "```diff\n-> Tu DM un membre sans raison = ban\n-> Tu parles de nudes = ban\n-> Tu vends des nudes = ban\n-> Ta bio est suspecte = ban\n-> Ton compte est créé aujourd'hui = ban\n-> Tu proposes du RP/ERP/HRP\n```"
+        },
+        {
+          "name": "BREF",
+          "value": "On en a vu un paquet avant toi, et on est habitués.\nTu t'appelles sûrement Karim *(désolé à tous les autres Karim)*,\nT'as probablement 14 ans, et **t'es tout sauf une fille.**\nTu prétextes une expérience sociale, ou bien tu prétends vouloir chopper des **pédophiles**, ou n'importe quoi d'autre... En vrai on s'en bat les couilles.\nLa vérité c'est que tu es en manque d'affection, et ça, on s'en bat **encore plus** les couilles, rassure-toi.\n\nBref, Ceci est un Ping pour report les E-Girls :\n<@849660133637095445>",
+          "inline": false
+        }
+      ],
+      "footer": "Allez, bon voyage au pays des bannis !",
+      "image_url": "https://i.imgur.com/hzMgOaM.gif",
+      "thumbnail_url": null,
+      "attachment_url": null
     }
   ]
 }

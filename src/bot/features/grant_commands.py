@@ -30,7 +30,8 @@ class GrantCommandsFeature:
         self.prefix = os.getenv("PREFIX", "!")
         self.commands: List[GrantCommand] = []
 
-    def setup(self, client: discord.Client) -> None:  # noqa: D401
+    def _load_from_config(self) -> None:
+        self.commands.clear()
         # Charger depuis JSON si présent (par défaut: grant_commands.json à la racine)
         path = os.getenv(CONFIG_ENV, "grant_commands.json")
         if path and os.path.exists(path):
@@ -68,6 +69,13 @@ class GrantCommandsFeature:
                 if ids:
                     self.commands.append(GrantCommand(name=one_name.lower(), allowed_user_ids=ids, role_name=one_role, gif_path=one_gif))
                     logger.info("Fallback .env chargé pour grant_commands.")
+
+    def setup(self, client: discord.Client) -> None:  # noqa: D401
+        self._load_from_config()
+
+    def reload(self) -> None:
+        """Recharger la configuration des grant commands depuis le JSON/env."""
+        self._load_from_config()
 
     async def _ensure_role(self, guild: discord.Guild, role_name: str) -> Optional[discord.Role]:
         for r in guild.roles:

@@ -27,10 +27,26 @@
         <label>Description</label>
         <textarea id="description" placeholder="Texte principal de l'embed..."></textarea>
 
-        <label>Champs (JSON simplifié)</label>
-        <textarea id="fields" class="small" placeholder='[
-  {"name": "Titre", "value": "Texte", "inline": false}
-]'></textarea>
+        <div class="card" style="margin-top:0.75rem;">
+            <h3>Champs de l'embed</h3>
+            <p class="small">Ajoute des champs comme dans un embed Discord, sans JSON.</p>
+            <div class="row">
+                <div class="col">
+                    <label>Nom du champ</label>
+                    <input type="text" id="field_name" placeholder="Titre du champ">
+                </div>
+                <div class="col">
+                    <label>Inline ?</label>
+                    <input type="checkbox" id="field_inline"> <span class="small">Afficher sur la même ligne</span>
+                </div>
+            </div>
+            <label>Valeur</label>
+            <textarea id="field_value" placeholder="Contenu du champ..."></textarea>
+            <div style="margin-top:0.5rem;">
+                <button type="button" onclick="addField()">➕ Ajouter le champ</button>
+            </div>
+            <div id="fields_list" class="small" style="margin-top:0.5rem;"></div>
+        </div>
 
         <label>Footer</label>
         <input type="text" id="footer" placeholder="Texte de bas de l'embed">
@@ -48,6 +64,13 @@
             <span id="status" class="status"></span>
         </div>
     </form>
+</div>
+
+<div class="card">
+    <h2>Prévisualisation de l'embed</h2>
+    <div id="embed-preview" class="embed-preview">
+        <!-- preview remplie par JS -->
+    </div>
 </div>
 
 <div class="card">
@@ -82,6 +105,7 @@
 <script>
 let embeds = {{ embeds | tojson | safe }};
 let currentIndex = null;
+let fieldsData = [];
 
 function refreshTable() {
     const tbody = document.getElementById('embed-table-body');
@@ -109,17 +133,21 @@ function loadFromRow(index) {
     document.getElementById('triggers').value = (e.triggers || []).join(', ');
     document.getElementById('title').value = e.title || '';
     document.getElementById('description').value = e.description || '';
-    document.getElementById('fields').value = JSON.stringify(e.fields || [], null, 2);
+    fieldsData = Array.isArray(e.fields) ? [...e.fields] : [];
     document.getElementById('footer').value = e.footer || '';
     document.getElementById('image_url').value = e.image_url || '';
     document.getElementById('thumbnail_url').value = e.thumbnail_url || '';
+    renderFieldsList();
+    updatePreview();
     setStatus('Embed chargé.', true);
 }
 
 function resetForm() {
     currentIndex = null;
     document.getElementById('embed-form').reset();
-    document.getElementById('fields').value = '';
+    fieldsData = [];
+    renderFieldsList();
+    updatePreview();
     setStatus('Formulaire réinitialisé.', true);
 }
 
@@ -144,9 +172,90 @@ async function deleteEmbed(index) {
     if (currentIndex === index) {
         currentIndex = null;
         document.getElementById('embed-form').reset();
-        document.getElementById('fields').value = '';
+        fieldsData = [];
+        renderFieldsList();
+        updatePreview();
     }
     await persistEmbeds('Embed supprimé.');
+}
+
+function addField() {
+    const name = document.getElementById('field_name').value.trim();
+    const value = document.getElementById('field_value').value.trim();
+    const inline = document.getElementById('field_inline').checked;
+    if (!name || !value) {
+        setStatus('Nom et valeur du champ sont obligatoires.', false);
+        return;
+    }
+    fieldsData.push({ name, value, inline });
+    document.getElementById('field_name').value = '';
+    document.getElementById('field_value').value = '';
+    document.getElementById('field_inline').checked = false;
+    renderFieldsList();
+    updatePreview();
+}
+
+function removeField(index) {
+    fieldsData.splice(index, 1);
+    renderFieldsList();
+    updatePreview();
+}
+
+function renderFieldsList() {
+    const container = document.getElementById('fields_list');
+    if (!container) return;
+    if (!fieldsData.length) {
+        container.innerHTML = '<em>Aucun champ pour le moment.</em>';
+        return;
+    }
+    container.innerHTML = '';
+    fieldsData.forEach((f, idx) => {
+        const div = document.createElement('div');
+        div.style.marginBottom = '0.25rem';
+        const inlineLabel = f.inline ? ' (inline)' : '';
+        div.innerHTML = `
+            <strong>${f.name}</strong>${inlineLabel}: ${f.value}
+            <button type="button" class="danger" style="margin-left:0.5rem;" onclick="removeField(${idx})">🗑️</button>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function updatePreview() {
+    const prev = document.getElementById('embed-preview');
+    if (!prev) return;
+    const title = document.getElementById('title').value.trim();
+    const description = document.getElementById('description').value.trim();
+    const footer = document.getElementById('footer').value.trim();
+    const color = document.getElementById('color').value.trim();
+    const thumbnail = document.getElementById('thumbnail_url').value.trim();
+
+    const colorBar = color ? `<div class="embed-color" style="background:${color};"></div>` : '<div class="embed-color"></div>';
+
+    let fieldsHtml = '';
+    if (fieldsData.length) {
+        fieldsHtml = fieldsData.map(f => `
+            <div class="embed-field${f.inline ? ' inline' : ''}">
+                <div class="embed-field-name">${f.name}</div>
+                <div class="embed-field-value">${f.value}</div>
+            </div>
+        `).join('');
+    }
+
+    const thumbHtml = thumbnail ? `<div class="embed-thumb"><img src="${thumbnail}" alt="thumb" /></div>` : '';
+
+    prev.innerHTML = `
+        <div class="embed-wrapper">
+            ${colorBar}
+            <div class="embed-main">
+                ${title ? `<div class="embed-title">${title}</div>` : ''}
+                ${description ? `<div class="embed-description">${description}</div>` : ''}
+                ${fieldsHtml ? `<div class="embed-fields">${fieldsHtml}</div>` : ''}
+                ${footer ? `<div class="embed-footer">${footer}</div>` : ''}
+            </div>
+            ${thumbHtml}
+        </div>
+    `;
 }
 
 function setStatus(msg, ok) {
@@ -167,19 +276,7 @@ async function saveEmbed(event) {
         const image_url = document.getElementById('image_url').value || null;
         const thumbnail_url = document.getElementById('thumbnail_url').value || null;
 
-        let fields = [];
-        const rawFields = document.getElementById('fields').value.trim();
-        if (rawFields) {
-            try {
-                fields = JSON.parse(rawFields);
-                if (!Array.isArray(fields)) throw new Error('fields doit être un tableau');
-            } catch (e) {
-                setStatus('Erreur JSON dans les champs : ' + e.message, false);
-                return;
-            }
-        }
-
-        const embed = { name, triggers, title, description, color, fields, footer, image_url, thumbnail_url };
+        const embed = { name, triggers, title, description, color, fields: fieldsData, footer, image_url, thumbnail_url };
 
         if (currentIndex === null) {
             embeds.push(embed);
@@ -214,5 +311,7 @@ async function persistEmbeds(successMessage) {
 
 // init
 refreshTable();
+renderFieldsList();
+updatePreview();
 </script>
 {% endblock %}

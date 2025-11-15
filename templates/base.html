@@ -31,17 +31,48 @@
 </head>
 <body>
 <header>
-    <div style="display:flex; align-items:center; justify-content:space-between;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
         <h1>Nyah-Chan • Admin</h1>
-        <nav>
+        <nav style="display:flex; align-items:center; gap:0.75rem;">
             <a href="/ui/keywords" class="{% if active == 'keywords' %}active{% endif %}">Keyword responses</a>
             <a href="/ui/roles" class="{% if active == 'roles' %}active{% endif %}">Role triggers</a>
             <a href="/ui/grant" class="{% if active == 'grant' %}active{% endif %}">Grant commands</a>
+            <button type="button" class="secondary" onclick="reloadConfigs()">🔄 Recharger les configs</button>
+            <span id="reload-status" class="status"></span>
         </nav>
     </div>
 </header>
 <main>
     {% block content %}{% endblock %}
 </main>
+<script>
+async function reloadConfigs() {
+    const label = document.getElementById('reload-status');
+    if (label) {
+        label.textContent = 'Reload en cours...';
+        label.className = 'status';
+    }
+    try {
+        const resp = await fetch('/api/reload', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            if (label) {
+                label.textContent = 'Configs rechargées dans le bot.';
+                label.className = 'status ok';
+            }
+        } else {
+            if (label) {
+                label.textContent = 'Erreur reload: ' + (data.error || 'inconnue');
+                label.className = 'status err';
+            }
+        }
+    } catch (e) {
+        if (label) {
+            label.textContent = 'Erreur reload: ' + e;
+            label.className = 'status err';
+        }
+    }
+}
+</script>
 </body>
 </html>

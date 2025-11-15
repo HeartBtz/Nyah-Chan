@@ -5,6 +5,13 @@ from importlib import util as importlib_util
 from dotenv import load_dotenv, find_dotenv
 import discord
 
+from .features import keyword_responses  # noqa: F401
+from .features import role_triggers  # noqa: F401
+from .features import grant_commands  # noqa: F401
+from .features import ollama_qna  # noqa: F401
+from .features import commands  # noqa: F401
+from .features import registry as feature_registry
+
 
 def create_client() -> discord.Client:
     intents = discord.Intents.default()
@@ -55,13 +62,9 @@ async def async_main():
     client = create_client()
     preflight_checks()
 
-    # Import features to ensure registration
-    from .features import role_triggers  # noqa: F401
-    from .features import commands  # noqa: F401
-    from .features import grant_commands  # noqa: F401
-    from .features import ollama_qna  # noqa: F401
-    from .features import keyword_responses  # noqa: F401
-    from .features.registry import setup_all
+    # Features sont déjà importées en haut pour pouvoir utiliser le registry
+    from .features.registry import setup_all, reload_all
+    from .web import set_reload_callback
 
     # Import and setup events after .env is loaded
     from .events.ready import setup_ready_event
@@ -69,6 +72,14 @@ async def async_main():
     setup_ready_event(client)
     setup_message_event(client)
     setup_all(client)
+
+    # Permettre à la WebGUI de déclencher un reload à chaud des features
+    def _reload_features() -> None:
+        logger = logging.getLogger("nyahchan")
+        logger.info("Reload des features demandé depuis la WebGUI")
+        reload_all()
+
+    set_reload_callback(_reload_features)
 
     try:
         await client.start(token)

@@ -26,6 +26,14 @@ def setup_all(client: discord.Client) -> None:
         f.setup(client)
 
 
+def reload_all() -> None:
+    """Recharger la configuration de toutes les features qui exposent reload()."""
+    for f in _features:
+        reload_fn = getattr(f, "reload", None)
+        if callable(reload_fn):
+            reload_fn()
+
+
 async def dispatch_on_message(message: discord.Message) -> None:
     for f in _features:
         await f.on_message(message)
