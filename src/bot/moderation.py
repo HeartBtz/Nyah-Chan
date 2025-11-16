@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from datetime import timedelta
 
 import logging
 import discord
@@ -137,7 +138,7 @@ class ModerationCommands:
             member_label = _format_user_label(member)
             moderator_label = _format_user_label(interaction.user)
 
-            until = discord.utils.utcnow() + discord.timedelta(minutes=minutes)
+            until = discord.utils.utcnow() + timedelta(minutes=minutes)
 
             embed = discord.Embed(
                 title="⏱ Timeout",
