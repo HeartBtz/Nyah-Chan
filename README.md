@@ -153,12 +153,52 @@ ROLE_TRIGGERS_CONFIG=role_triggers.json
 GRANT_COMMANDS_CONFIG=grant_commands.json
 KEYWORD_RESPONSES_CONFIG=keyword_responses.json
 
+# Modération
+MOD_LOG_CHANNEL_ID=          # ID du salon texte pour les logs de modération
+MOD_WARNINGS_PATH=           # Chemin du fichier JSON de warns (défaut: moderation_warnings.json)
+
 # Ollama (optionnel)
 OLLAMA_ENABLED=0
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3
 OLLAMA_TIMEOUT=60
 ```
+
+---
+
+## Commandes de modération (slash)
+
+Le bot embarque un module de modération basé sur des **commandes slash**.
+
+Permissions requises côté Discord (rôles/permissions sur le serveur) :
+
+- `/ban` : permission **Bannir des membres** (`ban_members`).
+- `/kick` : permission **Expulser des membres** (`kick_members`).
+- `/timeout`, `/warn`, `/warnings`, `/unwarn` : permission **Modérer les membres** (`moderate_members`).
+
+### Salon de logs de modération
+
+En renseignant `MOD_LOG_CHANNEL_ID` dans `.env` avec l'ID d'un salon texte, le bot enverra un embed de log pour chaque action :
+
+- bannissements (`/ban`),
+- expulsions (`/kick`),
+- timeouts (`/timeout`),
+- avertissements (`/warn`).
+
+Chaque log contient au minimum : le membre ciblé, le modérateur, la raison, et des informations supplémentaires (durée de timeout, ID d'avertissement, etc.).
+Si `MOD_LOG_CHANNEL_ID` est vide ou invalide, les commandes continuent de fonctionner mais aucun log n'est envoyé.
+
+### Avertissements (warns)
+
+Les avertissements sont stockés dans un fichier JSON (par défaut `moderation_warnings.json` à la racine, ou le chemin défini dans `MOD_WARNINGS_PATH`).
+
+Commandes principales :
+
+- `/warn membre:User raison:str` : ajoute un avertissement pour le membre sur le serveur courant et log l'action.
+- `/warnings membre:User` : liste les avertissements du membre sur le serveur courant (réponse éphémère).
+- `/unwarn id:int` : supprime un avertissement par son ID (restreint au serveur courant).
+
+Les IDs d'avertissements sont uniques et incrémentaux, mais la consultation et la suppression se font toujours par serveur.
 
 ---
 
@@ -400,5 +440,3 @@ Une fois `run_bot_with_web.py` lancé :
 		```
 
 ---
-
-Ce README est pensé pour être directement lisible sur GitHub, et les commandes données fonctionnent à la fois sous Windows et sous Linux/macOS (en adaptant juste le chemin et l’activation du venv).
