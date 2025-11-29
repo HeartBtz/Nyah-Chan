@@ -52,6 +52,73 @@ class ModerationCommands:
         self._register_commands()
 
     def _register_commands(self) -> None:
+        @self.tree.command(name="userinfo", description="Afficher les informations de base sur un utilisateur")
+        async def userinfo(
+            interaction: discord.Interaction,
+            member: Optional[discord.Member] = None,
+        ) -> None:
+            target = member or interaction.user  # type: ignore[assignment]
+
+            if target is None:
+                await interaction.response.send_message(
+                    "Impossible de déterminer l'utilisateur.", ephemeral=True
+                )
+                return
+
+            assert interaction.user is not None
+
+            # Préparer un embed avec les infos de compte
+            embed = discord.Embed(
+                title=f"Infos utilisateur — {target}",
+                color=discord.Color.blurple(),
+            )
+
+            embed.set_thumbnail(url=target.display_avatar.url)
+
+            embed.add_field(name="ID", value=f"`{target.id}`", inline=False)
+            embed.add_field(
+                name="Compte créé le",
+                value=discord.utils.format_dt(target.created_at, style="F"),
+                inline=False,
+            )
+
+            if isinstance(target, discord.Member):
+                embed.add_field(
+                    name="A rejoint le serveur le",
+                    value=discord.utils.format_dt(target.joined_at, style="F") if target.joined_at else "(inconnu)",
+                    inline=False,
+                )
+                roles = [r.mention for r in target.roles if not r.is_default()]
+                roles_text = ", ".join(roles) if roles else "Aucun rôle spécifique"
+                embed.add_field(name="Rôles", value=roles_text, inline=False)
+
+            is_bot = "Oui" if target.bot else "Non"
+            embed.add_field(name="Bot", value=is_bot, inline=True)
+
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        @self.tree.command(name="avatar", description="Afficher l'avatar d'un utilisateur")
+        async def avatar(
+            interaction: discord.Interaction,
+            member: Optional[discord.Member] = None,
+        ) -> None:
+            target = member or interaction.user  # type: ignore[assignment]
+
+            if target is None:
+                await interaction.response.send_message(
+                    "Impossible de déterminer l'utilisateur.", ephemeral=True
+                )
+                return
+
+            embed = discord.Embed(
+                title=f"Avatar de {target}",
+                color=discord.Color.blurple(),
+            )
+            embed.set_image(url=target.display_avatar.url)
+            embed.add_field(name="ID", value=f"`{target.id}`", inline=False)
+
+            await interaction.response.send_message(embed=embed)
+
         @self.tree.command(name="ban", description="Bannir un membre avec une raison")
         @app_commands.checks.has_permissions(ban_members=True)
         async def ban(

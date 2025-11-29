@@ -30,6 +30,8 @@ Nyah‑Chan est un bot Discord modulaire écrit en Python, conçu pour :
 - `!ping` : répond « Pong! ».
 - `!help` / `!aide` : affiche les commandes disponibles.
 - `!roles` : liste les rôles du serveur (réservé aux membres avec la permission `manage_roles`).
+ - `/userinfo` : affiche les informations de base sur un utilisateur (ID, dates, rôles, avatar).
+ - `/avatar` : affiche l'avatar d'un utilisateur en grand.
 
 ### Triggers de rôles (`role_triggers`)
 
