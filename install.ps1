@@ -21,7 +21,7 @@ function Write-Banner {
   | |\  | |_| | (_| | | | |     | |____| | | | (_| | | | |
   |_| \_|\__, |\__,_|_| |_|      \_____|_| |_|\__,_|_| |_|
           __/ |
-         |___/          Auto-Installer v1.0
+         |___/          Auto-Installer v4.0
 
 "@ -ForegroundColor Cyan
 }

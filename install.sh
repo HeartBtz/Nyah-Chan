@@ -21,7 +21,7 @@ banner() {
     echo " | |\  | |_| | (_| | | | |     | |____| | | | (_| | | | |"
     echo " |_| \_|\__, |\__,_|_| |_|      \_____|_| |_|\__,_|_| |_|"
     echo "         __/ |                                            "
-    echo "        |___/          Auto-Installer v1.0                "
+    echo "        |___/          Auto-Installer v4.0                "
     echo -e "${NC}"
 }
 

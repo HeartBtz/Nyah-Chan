@@ -211,3 +211,12 @@ cython_debug/
 logs/
 *.log
 *.tmp
+
+# --- Legacy config files (pre-v3.0 JSON) ---
+moderation_warnings.json
+grant_commands.json
+keyword_responses.json
+role_triggers.json
+
+# Old example files
+*.example.json
