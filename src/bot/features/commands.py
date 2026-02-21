@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 import logging
-from datetime import datetime, timezone
 
 import discord
 
 from .registry import register
+from ..utils import calculate_uptime
 
 logger = logging.getLogger("nyahchan.feature.commands")
 
@@ -82,7 +82,8 @@ class CommandsFeature:
                     "**Triggers de rôles** — Configurable via le panel web\n"
                     "**Keyword responses** — Embeds automatiques par mots-clés\n"
                     "**Grant commands** — Commandes d'attribution de rôles\n"
-                    "**Q&A Ollama** — Mentionnez le bot avec `?` pour poser une question"
+                    "**Q&A Ollama** — Mentionnez le bot avec `?` pour poser une question\n"
+                    "**Auto-modération** — Anti-spam, mots interdits, CAPS (config .env)"
                 ),
                 inline=False,
             )
@@ -121,17 +122,8 @@ class CommandsFeature:
 
         elif cmd == "stats":
             client = self._client
-            uptime = "N/A"
             from ..main import bot_state
-            if bot_state.get("started_at"):
-                try:
-                    started = datetime.fromisoformat(bot_state["started_at"])
-                    delta = datetime.now(timezone.utc) - started
-                    hours, remainder = divmod(int(delta.total_seconds()), 3600)
-                    minutes, seconds = divmod(remainder, 60)
-                    uptime = f"{hours}h {minutes}m {seconds}s"
-                except Exception:
-                    pass
+            uptime = calculate_uptime(bot_state.get("started_at", ""))
 
             embed = discord.Embed(
                 title="📊 Statistiques — Nyah-Chan",

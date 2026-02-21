@@ -88,6 +88,17 @@
             <a href="/ui/grant" class="btn btn-primary btn-sm">Gérer</a>
         </div>
     </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>⚠️ Avertissements</h2>
+            <span class="badge">{{ stats.warnings_count }}</span>
+        </div>
+        <p class="text-secondary text-sm">Historique des avertissements de modération.</p>
+        <div class="btn-group">
+            <a href="/ui/warnings" class="btn btn-primary btn-sm">Voir</a>
+        </div>
+    </div>
 </div>
 
 <!-- Quick Actions -->
@@ -105,7 +116,8 @@
 // Auto-refresh stats every 30s
 async function refreshStats() {
     try {
-        const resp = await fetch('/api/stats');
+        const resp = await authFetch('/api/stats');
+        if (!resp) return;
         if (!resp.ok) return;
         const data = await resp.json();
         document.getElementById('stat-status').textContent = data.bot_ready ? 'En ligne' : 'Hors ligne';
@@ -113,6 +125,11 @@ async function refreshStats() {
         document.getElementById('stat-users').textContent = data.users;
         document.getElementById('stat-uptime').textContent = data.uptime;
         document.getElementById('stat-latency').textContent = data.latency;
+        // Update status dot
+        const dots = document.querySelectorAll('.status-dot');
+        dots.forEach(dot => {
+            dot.className = 'status-dot ' + (data.bot_ready ? 'online' : 'offline');
+        });
     } catch (e) {
         // Silently ignore refresh errors
     }

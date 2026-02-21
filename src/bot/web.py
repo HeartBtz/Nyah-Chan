@@ -18,6 +18,8 @@ from fastapi.templating import Jinja2Templates
 from .config.grant_commands_store import load_grant_commands, save_grant_commands
 from .config.keyword_responses_store import load_keyword_responses, save_keyword_responses
 from .config.role_triggers_store import load_role_triggers, save_role_triggers
+from .moderation_store import WarningStore
+from .utils import calculate_uptime
 
 logger = logging.getLogger("nyahchan.web")
 
@@ -157,20 +159,11 @@ async def ui_dashboard(request: Request, session: Optional[str] = Cookie(None)) 
         "keywords_count": len(keywords_data.get("embeds", [])),
         "triggers_count": len(roles_data.get("triggers", [])),
         "grant_count": len(grant_data.get("commands", [])),
+        "warnings_count": WarningStore().get_total_count(),
     }
 
     # Calculate uptime
-    if stats["started_at"]:
-        try:
-            started = datetime.fromisoformat(stats["started_at"])
-            delta = datetime.now(timezone.utc) - started
-            hours, remainder = divmod(int(delta.total_seconds()), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            stats["uptime"] = f"{hours}h {minutes}m {seconds}s"
-        except Exception:
-            stats["uptime"] = "N/A"
-    else:
-        stats["uptime"] = "N/A"
+    stats["uptime"] = calculate_uptime(stats["started_at"])
 
     # Client latency
     client = _bot_state.get("client")
@@ -211,6 +204,40 @@ async def ui_grant(request: Request, session: Optional[str] = Cookie(None)) -> A
         "grant.html",
         {"request": request, "commands": data.get("commands", []), "active": "grant"},
     )
+
+
+# --- Warnings page ---
+@app.get("/ui/warnings", response_class=HTMLResponse)
+async def ui_warnings(request: Request, session: Optional[str] = Cookie(None)) -> Any:
+    _require_auth(session)
+    store = WarningStore()
+    # Collect warnings from all guilds
+    all_warnings = []
+    for gkey in store._data:
+        all_warnings.extend(store.get_all_warnings_for_guild(int(gkey)))
+    return templates.TemplateResponse(
+        "warnings.html",
+        {"request": request, "warnings": all_warnings, "active": "warnings"},
+    )
+
+
+@app.get("/api/warnings", response_class=JSONResponse)
+async def api_get_warnings(session: Optional[str] = Cookie(None)) -> Any:
+    _require_auth(session)
+    store = WarningStore()
+    all_warnings = []
+    for gkey in store._data:
+        for w in store.get_all_warnings_for_guild(int(gkey)):
+            all_warnings.append({
+                "id": w.id,
+                "user_id": str(w.user_id),
+                "moderator_id": str(w.moderator_id),
+                "guild_id": str(w.guild_id),
+                "reason": w.reason,
+                "created_at": w.created_at,
+            })
+    all_warnings.sort(key=lambda x: x["id"], reverse=True)
+    return {"warnings": all_warnings}
 
 
 # --- API: Health check (public) ---
@@ -305,16 +332,7 @@ async def api_stats(session: Optional[str] = Cookie(None)) -> Any:
     _require_auth(session)
     client = _bot_state.get("client")
     started_at = _bot_state.get("started_at", "")
-    uptime = "N/A"
-    if started_at:
-        try:
-            started = datetime.fromisoformat(started_at)
-            delta = datetime.now(timezone.utc) - started
-            hours, remainder = divmod(int(delta.total_seconds()), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            uptime = f"{hours}h {minutes}m {seconds}s"
-        except Exception:
-            pass
+    uptime = calculate_uptime(started_at)
 
     return {
         "bot_ready": _bot_state.get("ready", False),

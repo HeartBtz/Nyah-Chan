@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import json
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
@@ -9,6 +8,8 @@ from typing import List, Optional
 import discord
 
 from .registry import register
+from ..config.grant_commands_store import load_grant_commands
+from ..utils import ensure_role
 
 logger = logging.getLogger("nyahchan.feature.grant")
 
@@ -32,13 +33,10 @@ class GrantCommandsFeature:
 
     def _load_from_config(self) -> None:
         self.commands.clear()
-        # Charger depuis JSON si présent (par défaut: grant_commands.json à la racine)
         path = os.getenv(CONFIG_ENV, "grant_commands.json")
-        if path and os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for item in data.get("commands", []):
+        try:
+            data = load_grant_commands(path)
+            for item in data.get("commands", []):
                     name = str(item.get("name", "")).strip().lower()
                     rname = str(item.get("role_name", "")).strip()
                     gif_path = item.get("gif_path")
@@ -51,11 +49,9 @@ class GrantCommandsFeature:
                             pass
                     if name and rname and ids:
                         self.commands.append(GrantCommand(name=name, allowed_user_ids=ids, role_name=rname, gif_path=gif_path))
-                logger.info(f"Chargé {len(self.commands)} commande(s) grant depuis {path}.")
-            except Exception as e:
-                logger.error(f"Erreur lecture {CONFIG_ENV}: {e}")
-
-        # Fallback .env simple: un seul mapping
+            logger.info(f"Chargé {len(self.commands)} commande(s) grant depuis {path}.")
+        except Exception as e:
+            logger.error(f"Erreur lecture {CONFIG_ENV}: {e}")
         if not self.commands:
             one_name = os.getenv("GRANT_CMD_NAME")
             one_role = os.getenv("GRANT_ROLE_NAME")
@@ -77,23 +73,8 @@ class GrantCommandsFeature:
         """Recharger la configuration des grant commands depuis le JSON/env."""
         self._load_from_config()
 
-    async def _ensure_role(self, guild: discord.Guild, role_name: str) -> Optional[discord.Role]:
-        for r in guild.roles:
-            if r.name.lower() == role_name.lower():
-                return r
-        try:
-            role = await guild.create_role(name=role_name, mentionable=True, reason="Création auto via grant command")
-            me = guild.me
-            if me and me.top_role and me.top_role.position > 1:
-                target_pos = me.top_role.position - 1
-                try:
-                    await role.edit(position=target_pos, reason="Auto-reposition sous top rôle du bot")
-                except Exception:
-                    pass
-            return role
-        except Exception as e:
-            logger.error(f"Impossible de créer le rôle '{role_name}': {e}")
-            return None
+    async def _grant_ensure_role(self, guild: discord.Guild, role_name: str) -> Optional[discord.Role]:
+        return await ensure_role(guild, role_name)
 
     def _parse_target_member(self, message: discord.Message) -> Optional[discord.Member]:
         if message.mentions:
@@ -163,7 +144,7 @@ class GrantCommandsFeature:
             return
 
         # Ensure role exists
-        role = await self._ensure_role(message.guild, matched.role_name)
+        role = await self._grant_ensure_role(message.guild, matched.role_name)
         if role is None:
             embed = discord.Embed(
                 title="❌ Erreur",

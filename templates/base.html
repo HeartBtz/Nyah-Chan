@@ -20,6 +20,7 @@
             <a href="/ui/keywords" class="{% if active == 'keywords' %}active{% endif %}">Keywords</a>
             <a href="/ui/roles" class="{% if active == 'roles' %}active{% endif %}">Rôles</a>
             <a href="/ui/grant" class="{% if active == 'grant' %}active{% endif %}">Grant</a>
+            <a href="/ui/warnings" class="{% if active == 'warnings' %}active{% endif %}">Warnings</a>
             <div class="nav-actions">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="reloadConfigs()">🔄 Reload</button>
                 <a href="/logout" class="btn btn-ghost btn-sm">Déconnexion</a>
@@ -57,6 +58,10 @@ function showToast(message, type = 'info') {
 async function reloadConfigs() {
     try {
         const resp = await fetch('/api/reload', { method: 'POST' });
+        if (resp.status === 303 || resp.redirected) {
+            window.location.href = '/login';
+            return;
+        }
         const data = await resp.json();
         if (data.ok) {
             showToast('Configurations rechargées avec succès', 'success');
@@ -66,6 +71,16 @@ async function reloadConfigs() {
     } catch (e) {
         showToast('Erreur réseau: ' + e, 'error');
     }
+}
+
+// --- Helper: authenticated fetch (auto-redirect on session expiry) ---
+async function authFetch(url, options = {}) {
+    const resp = await fetch(url, options);
+    if (resp.status === 303 || resp.status === 401 || resp.redirected) {
+        window.location.href = '/login';
+        return null;
+    }
+    return resp;
 }
 
 // --- Helper: escape HTML to prevent XSS ---

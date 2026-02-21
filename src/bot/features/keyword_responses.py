@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 import json
 import os
+import time
 from typing import Dict, List
 
 import discord
 
 from .registry import register
 from ..config.keyword_responses_store import load_keyword_responses
+from ..utils import word_boundary_match
 
 
 logger = logging.getLogger("nyahchan.feature.keyword_responses")
@@ -173,11 +175,16 @@ class KeywordResponsesFeature:
         content = (message.content or "").lower()
 
         # Cooldown: avoid spamming same embed in same channel
-        now = __import__("time").time()
+        now = time.time()
         channel_id = message.channel.id
 
+        # Periodic cooldown cleanup (every 100 messages, remove entries older than 60s)
+        if len(self._cooldowns) > 200:
+            cutoff = now - 60
+            self._cooldowns = {k: v for k, v in self._cooldowns.items() if v > cutoff}
+
         for trig, cfg in self._trigger_index.items():
-            if trig in content:
+            if word_boundary_match(trig, content):
                 # 30-second cooldown per trigger per channel
                 cooldown_key = f"{channel_id}:{trig}"
                 last_sent = self._cooldowns.get(cooldown_key, 0)

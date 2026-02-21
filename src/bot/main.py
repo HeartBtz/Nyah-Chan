@@ -12,6 +12,7 @@ import discord
 from dotenv import find_dotenv, load_dotenv
 
 from .features import commands  # noqa: F401
+from .features import automod  # noqa: F401
 from .features import grant_commands  # noqa: F401
 from .features import keyword_responses  # noqa: F401
 from .features import ollama_qna  # noqa: F401
@@ -59,9 +60,13 @@ def setup_logging() -> None:
     )
     console_handler.setFormatter(console_fmt)
 
-    # File handler (rotating would be better, but keep it simple)
+    # Rotating file handler (5 MB per file, keep 3 backups)
+    from logging.handlers import RotatingFileHandler
     os.makedirs("logs", exist_ok=True)
-    file_handler = logging.FileHandler("logs/nyahchan.log", encoding="utf-8")
+    file_handler = RotatingFileHandler(
+        "logs/nyahchan.log", encoding="utf-8",
+        maxBytes=5 * 1024 * 1024, backupCount=3,
+    )
     file_handler.setLevel(logging.DEBUG)
     file_fmt = logging.Formatter(
         "[%(asctime)s] [%(levelname)-7s] %(name)s (%(filename)s:%(lineno)d): %(message)s",
@@ -139,10 +144,13 @@ async def async_main() -> None:
     set_reload_callback(_reload_features)
     set_bot_state(bot_state)
 
-    # Graceful shutdown handler
-    async def _shutdown() -> None:
-        logger.info("Shutting down gracefully...")
-        await client.close()
+    # Graceful shutdown on SIGINT / SIGTERM
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.ensure_future(client.close()))
+        except NotImplementedError:
+            pass  # Windows
 
     try:
         await client.start(token)

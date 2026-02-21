@@ -9,6 +9,7 @@ from typing import List
 import discord
 
 from .registry import register
+from ..utils import ensure_role, word_boundary_match
 
 logger = logging.getLogger("nyahchan.feature.roles")
 
@@ -75,27 +76,6 @@ class RoleTriggersFeature:
         """Reload triggers from config."""
         self._load_from_config()
 
-    async def _ensure_role(self, guild: discord.Guild, role_name: str) -> discord.Role | None:
-        """Find or create a role by name."""
-        for r in guild.roles:
-            if r.name.lower() == role_name.lower():
-                return r
-        try:
-            role = await guild.create_role(
-                name=role_name, mentionable=True, reason="Auto-created for role trigger"
-            )
-            me = guild.me
-            if me and me.top_role and me.top_role.position > 1:
-                target_pos = me.top_role.position - 1
-                try:
-                    await role.edit(position=target_pos, reason="Auto-position under bot role")
-                except Exception:
-                    pass
-            return role
-        except Exception as e:
-            logger.warning("Cannot create role '%s': %s", role_name, e)
-            return None
-
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or message.guild is None:
             return
@@ -109,13 +89,13 @@ class RoleTriggersFeature:
             return
 
         for rt in self.triggers:
-            trigger_hit = rt.trigger in content
-            remove_hit = bool(rt.remove_trigger and rt.remove_trigger in content)
+            trigger_hit = word_boundary_match(rt.trigger, content)
+            remove_hit = bool(rt.remove_trigger and word_boundary_match(rt.remove_trigger, content))
 
             if not trigger_hit and not remove_hit:
                 continue
 
-            role = await self._ensure_role(guild, rt.role_name)
+            role = await ensure_role(guild, rt.role_name)
             if role is None:
                 continue
             if role.position >= me.top_role.position:

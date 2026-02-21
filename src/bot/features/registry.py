@@ -20,7 +20,10 @@ _features: List[Feature] = []
 
 
 def register(feature: Feature) -> None:
-    """Register a feature with the bot."""
+    """Register a feature with the bot (deduplicates by name)."""
+    if any(f.name == feature.name for f in _features):
+        logger.warning("Feature '%s' already registered, skipping duplicate", feature.name)
+        return
     _features.append(feature)
     logger.debug("Registered feature: %s", feature.name)
 

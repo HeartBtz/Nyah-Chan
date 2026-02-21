@@ -19,9 +19,11 @@ class OllamaQnAFeature:
         self.base_url: str | None = None
         self.model: str | None = None
         self.timeout: int | None = None
+        self.system_prompt: str | None = None
         self.prefix = os.getenv("PREFIX", "!")
         self.max_chunk = 1900  # keep some margin under Discord 2000 char limit
         self._rate_limits: dict[str, float] = {}  # user_id -> last_query_timestamp
+        self._session: aiohttp.ClientSession | None = None
 
     def setup(self, client: discord.Client) -> None:  # noqa: D401
         # Décide ici, après que .env ait été chargé dans main.async_main()
@@ -50,29 +52,41 @@ class OllamaQnAFeature:
             logger.error(f"[ollama] OLLAMA_TIMEOUT invalide: {timeout_raw!r}. Désactivation de la feature.")
             self.enabled = False
             return
+
+        self.system_prompt = os.getenv("OLLAMA_SYSTEM_PROMPT", "").strip() or None
+
+        # Create a reusable aiohttp session
+        self._session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=self.timeout)
+        )
+
         logger.info(
-            f"[ollama] Activé | base_url={self.base_url} | model={self.model} | timeout={self.timeout}s | max_chunk={self.max_chunk}"
+            f"[ollama] Activé | base_url={self.base_url} | model={self.model} | "
+            f"timeout={self.timeout}s | system_prompt={'yes' if self.system_prompt else 'no'}"
         )
 
     async def _query_ollama(self, prompt: str) -> str:
         # Use /api/generate endpoint (simpler, stateless)
         url = f"{self.base_url.rstrip('/')}/api/generate"
-        payload = {"model": self.model, "prompt": prompt, "stream": False}
+        payload: dict = {"model": self.model, "prompt": prompt, "stream": False}
+        if self.system_prompt:
+            payload["system"] = self.system_prompt
         try:
             start = time.perf_counter()
             logger.debug(f"[ollama] POST {url} model={self.model} prompt_len={len(prompt)}")
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-                async with session.post(url, json=payload) as resp:
-                    dur = (time.perf_counter() - start) * 1000
-                    if resp.status != 200:
-                        text = await resp.text()
-                        logger.warning(f"[ollama] HTTP {resp.status} en {dur:.0f}ms: {text[:200]}")
-                        return f"Erreur Ollama ({resp.status}): {text[:500]}"
-                    data = await resp.json()
-                    # Response key may be 'response'
-                    answer = str(data.get("response", "(Réponse vide)")).strip()
-                    logger.debug(f"[ollama] Réponse OK en {dur:.0f}ms, len={len(answer)}")
-                    return answer
+            session = self._session or aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self.timeout)
+            )
+            async with session.post(url, json=payload) as resp:
+                dur = (time.perf_counter() - start) * 1000
+                if resp.status != 200:
+                    text = await resp.text()
+                    logger.warning(f"[ollama] HTTP {resp.status} en {dur:.0f}ms: {text[:200]}")
+                    return f"Erreur Ollama ({resp.status}): {text[:500]}"
+                data = await resp.json()
+                answer = str(data.get("response", "(Réponse vide)")).strip()
+                logger.debug(f"[ollama] Réponse OK en {dur:.0f}ms, len={len(answer)}")
+                return answer
         except asyncio.TimeoutError:
             logger.warning("[ollama] Timeout de la requête")
             return "(Timeout de la requête Ollama)"
@@ -100,8 +114,14 @@ class OllamaQnAFeature:
             return  # Simple heuristic: only answer questions
 
         # Rate limiting: 1 query per user per 15 seconds
-        now = __import__("time").time()
+        now = time.time()
         user_key = str(message.author.id)
+
+        # Periodic cleanup of stale rate-limit entries
+        if len(self._rate_limits) > 500:
+            cutoff = now - 30
+            self._rate_limits = {k: v for k, v in self._rate_limits.items() if v > cutoff}
+
         last_query = self._rate_limits.get(user_key, 0)
         if now - last_query < 15:
             remaining = int(15 - (now - last_query))

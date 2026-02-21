@@ -6,10 +6,13 @@ import discord
 
 logger = logging.getLogger("nyahchan.events.ready")
 
+_synced = False  # Only sync slash commands once per process lifetime
+
 
 def setup_ready_event(client: discord.Client) -> None:
     @client.event
     async def on_ready() -> None:
+        global _synced
         assert client.user is not None
         logger.info(
             "Connected as %s (%s) | Guilds: %d | Users: %d",
@@ -31,10 +34,12 @@ def setup_ready_event(client: discord.Client) -> None:
         )
         await client.change_presence(status=discord.Status.online, activity=activity)
 
-        # Sync slash commands
-        moderation = getattr(client, "moderation", None)
-        if moderation is not None:
-            try:
-                await moderation.sync()
-            except Exception as e:
-                logger.error("Failed to sync slash commands: %s", e)
+        # Sync slash commands (once per session to avoid rate limits)
+        if not _synced:
+            moderation = getattr(client, "moderation", None)
+            if moderation is not None:
+                try:
+                    await moderation.sync()
+                    _synced = True
+                except Exception as e:
+                    logger.error("Failed to sync slash commands: %s", e)

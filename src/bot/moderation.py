@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import discord
 from discord import app_commands
@@ -15,6 +16,37 @@ logger = logging.getLogger("nyahchan.moderation")
 
 def _format_user_label(user: discord.abc.User) -> str:
     return f"{user} (`{user.id}`)"
+
+
+def _parse_escalation_rules() -> Dict[int, Tuple[str, int]]:
+    """Parse WARN_ESCALATE_N env vars.
+
+    Format: WARN_ESCALATE_3=timeout:60  (timeout 60 min)
+            WARN_ESCALATE_5=kick
+            WARN_ESCALATE_7=ban
+
+    Returns {count: (action, param)} where param is timeout minutes or 0.
+    """
+    rules: Dict[int, Tuple[str, int]] = {}
+    for key, value in os.environ.items():
+        m = re.match(r"^WARN_ESCALATE_(\d+)$", key)
+        if not m:
+            continue
+        count = int(m.group(1))
+        value = value.strip().lower()
+        if value.startswith("timeout:"):
+            try:
+                minutes = int(value.split(":", 1)[1])
+                rules[count] = ("timeout", minutes)
+            except (ValueError, IndexError):
+                logger.warning("Invalid escalation rule %s=%s", key, value)
+        elif value == "kick":
+            rules[count] = ("kick", 0)
+        elif value == "ban":
+            rules[count] = ("ban", 0)
+        else:
+            logger.warning("Unknown escalation action in %s=%s", key, value)
+    return rules
 
 
 def _get_mod_log_channel(
@@ -60,8 +92,11 @@ class ModerationCommands:
         self.client = client
         self.tree = app_commands.CommandTree(client)
         self.warning_store = WarningStore()
+        self._escalation_rules = _parse_escalation_rules()
         self._register_commands()
         self._register_error_handlers()
+        if self._escalation_rules:
+            logger.info("Warning escalation rules: %s", self._escalation_rules)
 
     def _register_error_handlers(self) -> None:
         """Global error handler for slash commands."""
@@ -388,6 +423,11 @@ class ModerationCommands:
             await interaction.response.send_message(embed=embed)
             await _send_log(interaction.guild, self.client, embed)
 
+            # --- Warning auto-escalation ---
+            if self._escalation_rules and total in self._escalation_rules:
+                action, param = self._escalation_rules[total]
+                await self._execute_escalation(interaction, member, total, action, param)
+
         # --- /warnings ---
         @self.tree.command(name="warnings", description="Lister les avertissements d'un membre")
         @app_commands.checks.has_permissions(moderate_members=True)
@@ -449,6 +489,94 @@ class ModerationCommands:
             await interaction.response.send_message(
                 f"✅ Avertissement `#{warning_id}` supprimé pour {member.mention}.", ephemeral=True,
             )
+
+    async def _execute_escalation(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        warn_count: int,
+        action: str,
+        param: int,
+    ) -> None:
+        """Execute an automatic escalation action after a warn threshold."""
+        guild = interaction.guild
+        if guild is None:
+            return
+
+        me = guild.me
+        if me is None:
+            return
+
+        # Hierarchy check
+        if member.top_role >= me.top_role:
+            logger.warning(
+                "[escalation] Cannot escalate %s — role hierarchy prevents it", member
+            )
+            return
+
+        esc_embed = discord.Embed(color=discord.Color.dark_red())
+        esc_embed.add_field(name="Membre", value=_format_user_label(member), inline=False)
+        esc_embed.add_field(name="Avertissements", value=str(warn_count), inline=True)
+
+        try:
+            if action == "timeout":
+                until = discord.utils.utcnow() + timedelta(minutes=param)
+                reason = f"Auto-escalation: {warn_count} avertissements (timeout {param}min)"
+                try:
+                    await member.send(
+                        f"Tu as été mis en timeout sur **{guild.name}** pour {param} minute(s) "
+                        f"suite à {warn_count} avertissements."
+                    )
+                except Exception:
+                    pass
+                await member.timeout(until, reason=reason)
+                esc_embed.title = "⏱ Auto-Timeout (escalation)"
+                esc_embed.description = (
+                    f"{member.mention} a été automatiquement mis en timeout pour "
+                    f"**{param} min** après {warn_count} avertissements."
+                )
+                esc_embed.add_field(name="Durée", value=f"{param} minute(s)", inline=True)
+
+            elif action == "kick":
+                reason = f"Auto-escalation: {warn_count} avertissements"
+                try:
+                    await member.send(
+                        f"Tu as été expulsé de **{guild.name}** suite à {warn_count} avertissements."
+                    )
+                except Exception:
+                    pass
+                await guild.kick(member, reason=reason)
+                esc_embed.title = "🚪 Auto-Kick (escalation)"
+                esc_embed.description = (
+                    f"{member.mention} a été automatiquement expulsé après {warn_count} avertissements."
+                )
+
+            elif action == "ban":
+                reason = f"Auto-escalation: {warn_count} avertissements"
+                try:
+                    await member.send(
+                        f"Tu as été banni de **{guild.name}** suite à {warn_count} avertissements."
+                    )
+                except Exception:
+                    pass
+                await guild.ban(member, reason=reason)
+                esc_embed.title = "🚫 Auto-Ban (escalation)"
+                esc_embed.description = (
+                    f"{member.mention} a été automatiquement banni après {warn_count} avertissements."
+                )
+            else:
+                return
+
+            await interaction.followup.send(embed=esc_embed)
+            await _send_log(guild, self.client, esc_embed)
+            logger.info(
+                "[escalation] %s on %s after %d warnings in guild %s",
+                action, member, warn_count, guild.name,
+            )
+        except discord.Forbidden:
+            logger.warning("[escalation] Missing permissions for %s on %s", action, member)
+        except Exception as e:
+            logger.error("[escalation] Failed %s on %s: %s", action, member, e)
 
     async def sync(self) -> None:
         """Sync slash commands with Discord."""
