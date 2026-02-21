@@ -6,6 +6,19 @@
     <p>Historique des warnings du serveur</p>
 </div>
 
+<div class="help-box">
+    <details>
+        <summary>💡 Comment fonctionne le système d'avertissements ?</summary>
+        <p>Les avertissements sont donnés par les modérateurs via la commande <code>/warn @user raison</code> dans Discord.</p>
+        <ul>
+            <li><strong>Escalade automatique</strong> — Quand un utilisateur atteint un certain nombre de warnings, une action automatique peut être déclenchée (timeout, kick, ban). Configurez les règles dans <a href="/ui/settings?guild_id={{ guild_id }}">Paramètres → Escalade</a>.</li>
+            <li><strong>Suppression</strong> — Cliquez sur le bouton <strong>×</strong> pour supprimer un warning. Cela est aussi possible via <code>/unwarn @user numéro</code> dans Discord.</li>
+            <li><strong>Commande /warnings</strong> — Permet de consulter les warnings d'un utilisateur directement dans Discord.</li>
+        </ul>
+        <p>Les colonnes affichent l'ID du warning, l'utilisateur averti (ID Discord), le modérateur qui a donné le warning, la raison et la date.</p>
+    </details>
+</div>
+
 <div class="card">
     <div class="card-header">
         <h2>Warnings</h2>

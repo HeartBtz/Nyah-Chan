@@ -48,11 +48,32 @@
 
 <div class="card">
     <div class="card-header">
-        <h2>Configuration rapide</h2>
+        <h2>Guide de la WebUI</h2>
     </div>
-    <p class="text-secondary text-sm">
-        Utilisez les onglets ci-dessus pour configurer les keywords, rôles, commandes grant, et voir les warnings.
-        <br>Rendez-vous dans <a href="/ui/settings?guild_id={{ guild_id }}" style="color:var(--accent)">Paramètres</a> pour configurer l'automod, les messages de bienvenue, Ollama, et les seuils d'escalade.
-    </p>
+    <div class="help-box">
+        <div class="help-title">ℹ️ Comment utiliser ce panneau ?</div>
+        <p>Ce tableau de bord centralise <strong>toute la configuration</strong> de Nyah-Chan pour le serveur sélectionné. Chaque onglet correspond à une fonctionnalité :</p>
+        <ul>
+            <li><strong>Keywords</strong> — Réponses automatiques sous forme d'embed lorsqu'un mot-clé est détecté dans un message.</li>
+            <li><strong>Rôles</strong> — Attribution ou retrait automatique de rôles Discord lorsqu'un membre écrit un mot déclencheur.</li>
+            <li><strong>Grant</strong> — Commandes personnalisées (ex: <code>!vip</code>) permettant à certains utilisateurs d'attribuer un rôle à un autre membre.</li>
+            <li><strong>Warnings</strong> — Historique des avertissements donnés via <code>/warn</code>. Possibilité de supprimer un warning.</li>
+            <li><strong>Paramètres</strong> — Configuration globale : préfixe, bienvenue, au revoir, auto-modération, Ollama, journal de modération, et règles d'escalade.</li>
+        </ul>
+    </div>
+    <div class="help-box">
+        <div class="help-title">⚡ Commandes slash disponibles</div>
+        <p>En plus de la WebUI, Nyah-Chan dispose de commandes slash utilisables directement dans Discord :</p>
+        <ul>
+            <li><code>/warn</code> <code>/unwarn</code> <code>/warnings</code> — Gestion des avertissements</li>
+            <li><code>/ban</code> <code>/kick</code> <code>/timeout</code> — Actions de modération</li>
+            <li><code>/purge</code> — Suppression de messages en masse</li>
+            <li><code>/serverinfo</code> <code>/userinfo</code> <code>/avatar</code> — Informations</li>
+        </ul>
+    </div>
+    <div class="help-box">
+        <div class="help-title">🔒 Sécurité</div>
+        <p>Seuls les utilisateurs ayant la permission <strong>Administrateur</strong> sur le serveur Discord <em>et</em> étant sur un serveur où Nyah-Chan est présente peuvent accéder à ce panneau. L'authentification passe par Discord OAuth2.</p>
+    </div>
 </div>
 {% endblock %}

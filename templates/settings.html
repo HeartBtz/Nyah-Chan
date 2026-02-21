@@ -6,9 +6,25 @@
     <p>Toute la configuration de Nyah-Chan pour ce serveur</p>
 </div>
 
+<div class="help-box">
+    <details>
+        <summary>💡 Guide des paramètres</summary>
+        <p>Cette page regroupe <strong>tous les réglages</strong> de Nyah-Chan pour ce serveur. Chaque section est indépendante. N'oubliez pas de cliquer sur <strong>Sauvegarder tout</strong> en bas de la page après vos modifications.</p>
+        <ul>
+            <li><strong>Général</strong> — Préfixe des commandes textuelles et réactions automatiques.</li>
+            <li><strong>Bienvenue / Au revoir</strong> — Messages envoyés quand un membre rejoint ou quitte le serveur.</li>
+            <li><strong>Auto-modération</strong> — Filtre automatique des mots interdits, spam de mentions et abus de majuscules.</li>
+            <li><strong>Journal de mod</strong> — Salon où les actions de modération sont enregistrées.</li>
+            <li><strong>Ollama</strong> — Intégration d'un LLM local pour répondre aux questions des membres.</li>
+            <li><strong>Escalade</strong> — Actions automatiques quand un membre accumule trop de warnings.</li>
+        </ul>
+    </details>
+</div>
+
 <!-- General -->
 <div class="card">
     <div class="card-header"><h2>Général</h2></div>
+    <p class="help-section-note">Le préfixe est utilisé pour les commandes textuelles comme les commandes grant (ex: <code>!vip</code>). Les commandes slash (<code>/warn</code>, <code>/ban</code>…) fonctionnent indépendamment du préfixe.</p>
     <div class="form-row">
         <div class="form-group">
             <label>Préfixe des commandes</label>
@@ -30,6 +46,7 @@
 <!-- Welcome -->
 <div class="card">
     <div class="card-header"><h2>Messages de bienvenue</h2></div>
+    <p class="help-section-note">Envoyé quand un membre rejoint le serveur. Pour obtenir l'ID d'un salon : Mode développeur → clic droit sur le salon → "Copier l'identifiant".</p>
     <div class="feature-toggle mb-2">
         <label class="toggle-switch">
             <input type="checkbox" id="cfg-welcome_enabled">
@@ -46,12 +63,14 @@
     <div class="form-group">
         <label>Message <span class="text-muted text-sm">({mention}, {user}, {server}, {count})</span></label>
         <textarea id="cfg-welcome_message" rows="2"></textarea>
+        <p class="help-section-note">{mention} = @mention cliquable, {user} = pseudo, {server} = nom du serveur, {count} = nombre de membres.</p>
     </div>
 </div>
 
 <!-- Goodbye -->
 <div class="card">
     <div class="card-header"><h2>Messages d'au revoir</h2></div>
+    <p class="help-section-note">Envoyé quand un membre quitte le serveur. Mêmes variables disponibles que pour les messages de bienvenue.</p>
     <div class="feature-toggle mb-2">
         <label class="toggle-switch">
             <input type="checkbox" id="cfg-goodbye_enabled">
@@ -74,6 +93,7 @@
 <!-- Automod -->
 <div class="card">
     <div class="card-header"><h2>Auto-modération</h2></div>
+    <p class="help-section-note">Supprime automatiquement les messages contenant des mots interdits, trop de mentions, ou un excès de majuscules. Un avertissement est donné à l'auteur à chaque infraction détectée.</p>
     <div class="feature-toggle mb-2">
         <label class="toggle-switch">
             <input type="checkbox" id="cfg-automod_enabled">
@@ -100,6 +120,7 @@
 <!-- Moderation log -->
 <div class="card">
     <div class="card-header"><h2>Journal de modération</h2></div>
+    <p class="help-section-note">Si configuré, chaque action de modération (ban, kick, warn, timeout, purge) sera enregistrée dans le salon spécifié sous forme d'embed détaillé.</p>
     <div class="form-group">
         <label>Channel ID du log mod</label>
         <input type="text" id="cfg-mod_log_channel_id" placeholder="ID du salon (laisser vide pour désactiver)">
@@ -109,6 +130,7 @@
 <!-- Ollama -->
 <div class="card">
     <div class="card-header"><h2>Ollama Q&A</h2></div>
+    <p class="help-section-note">Intégration d'un modèle de langage local via <strong>Ollama</strong>. Quand un membre mentionne Nyah-Chan suivie d'une question, le bot répond via l'IA. Nécessite un serveur Ollama accessible à l'URL configurée.</p>
     <div class="feature-toggle mb-2">
         <label class="toggle-switch">
             <input type="checkbox" id="cfg-ollama_enabled">
@@ -142,6 +164,12 @@
         <h2>Escalade automatique des warnings</h2>
         <button class="btn btn-primary btn-sm" onclick="addRule()">+ Règle</button>
     </div>
+    <p class="help-section-note">
+        Définissez des règles pour punir automatiquement les membres qui accumulent des warnings.<br>
+        <strong>Nombre de warns</strong> : seuil de déclenchement. <strong>Action</strong> : timeout, kick ou ban.
+        <strong>Paramètre</strong> : durée du timeout en minutes (ignoré pour kick/ban).<br>
+        Exemple : 3 warns → timeout 60 min, 5 warns → kick, 7 warns → ban.
+    </p>
     <div class="table-container">
         <table class="data-table">
             <thead><tr>
