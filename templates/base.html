@@ -19,6 +19,16 @@
             <a href="/ui/roles" class="{% if page == 'roles' %}active{% endif %}">Rôles</a>
             <a href="/ui/grant" class="{% if page == 'grant' %}active{% endif %}">Grant</a>
             <a href="/ui/warnings" class="{% if page == 'warnings' %}active{% endif %}">Warnings</a>
+            <div class="nav-dropdown">
+                <a href="#" class="{% if page in ('custom_commands','reaction_roles','scheduled','xp') %}active{% endif %}" onclick="return false">Features ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="/ui/custom-commands" class="{% if page == 'custom_commands' %}active{% endif %}">Custom Cmds</a>
+                    <a href="/ui/reaction-roles" class="{% if page == 'reaction_roles' %}active{% endif %}">Reaction Roles</a>
+                    <a href="/ui/scheduled" class="{% if page == 'scheduled' %}active{% endif %}">Scheduled</a>
+                    <a href="/ui/xp" class="{% if page == 'xp' %}active{% endif %}">XP / Niveaux</a>
+                </div>
+            </div>
+            <a href="/ui/audit-log" class="{% if page == 'audit_log' %}active{% endif %}">Audit</a>
             <a href="/ui/settings" class="{% if page == 'settings' %}active{% endif %}">Paramètres</a>
         </nav>
         <div class="nav-actions">

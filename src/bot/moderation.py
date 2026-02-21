@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+import random
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import discord
@@ -253,6 +254,230 @@ class ModerationCommands:
                 await interaction.response.send_message(f"✅ Warning `#{warning_id}` supprimé.", ephemeral=True)
             else:
                 await interaction.response.send_message(f"Aucun warning `#{warning_id}` trouvé.", ephemeral=True)
+
+        # ---------- /tempban ----------
+        @self.tree.command(name="tempban", description="Bannir temporairement un membre")
+        @app_commands.checks.has_permissions(ban_members=True)
+        async def tempban(interaction: discord.Interaction, member: discord.Member,
+                          duration: str, reason: Optional[str] = None):
+            """duration: e.g. 7d, 12h, 30m"""
+            if not interaction.guild:
+                return await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+            if member == interaction.user:
+                return await interaction.response.send_message("Tu ne peux pas te bannir.", ephemeral=True)
+            if member.top_role >= interaction.guild.me.top_role:
+                return await interaction.response.send_message("Hiérarchie insuffisante.", ephemeral=True)
+
+            minutes = self._parse_duration(duration)
+            if minutes <= 0:
+                return await interaction.response.send_message(
+                    "Durée invalide. Exemples: `7d`, `12h`, `30m`.", ephemeral=True)
+
+            r = reason or "Aucune raison."
+            expires = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+            await interaction.response.defer()
+
+            try:
+                await member.send(f"Banni temporairement de **{interaction.guild.name}** ({duration}): {r}")
+            except Exception:
+                pass
+
+            try:
+                await interaction.guild.ban(member, reason=f"Tempban {duration}: {r}")
+                db = get_db()
+                db.add_tempban(
+                    str(interaction.guild.id), str(member.id), str(interaction.user.id),
+                    r, expires.isoformat(timespec="seconds"),
+                )
+                e = discord.Embed(
+                    title="⏳ Tempban",
+                    description=f"{member.mention} banni pour **{duration}**.",
+                    color=discord.Color.red(),
+                )
+            except Exception as ex:
+                e = discord.Embed(title="⏳ Tempban — Échec", description=str(ex), color=discord.Color.red())
+            e.add_field(name="Modérateur", value=_label(interaction.user), inline=False)
+            e.add_field(name="Raison", value=r, inline=False)
+            await interaction.followup.send(embed=e)
+            await _log(interaction.guild, self.client, e)
+
+        # ---------- /rank ----------
+        @self.tree.command(name="rank", description="Voir ton niveau et XP")
+        async def rank(interaction: discord.Interaction, member: Optional[discord.Member] = None):
+            if not interaction.guild:
+                return await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+            target = member or interaction.user
+            data = get_db().get_user_xp(str(interaction.guild.id), str(target.id))
+            level = data.get("level", 0)
+            xp = data.get("xp", 0)
+            # XP needed for next level
+            next_needed = 5 * (level ** 2) + 50 * level + 100
+            total_for_lvl = sum(5 * (i ** 2) + 50 * i + 100 for i in range(level))
+            progress_xp = xp - total_for_lvl
+            embed = discord.Embed(
+                title=f"📊 Niveau de {target.display_name}",
+                color=discord.Color.blurple(),
+            )
+            embed.set_thumbnail(url=target.display_avatar.url)
+            embed.add_field(name="Niveau", value=str(level), inline=True)
+            embed.add_field(name="XP", value=f"{xp:,}", inline=True)
+            embed.add_field(name="Progression", value=f"{progress_xp}/{next_needed}", inline=True)
+            # Simple progress bar
+            pct = min(progress_xp / max(next_needed, 1), 1.0)
+            filled = int(pct * 20)
+            bar = "█" * filled + "░" * (20 - filled)
+            embed.add_field(name="", value=f"`{bar}` {int(pct*100)}%", inline=False)
+            await interaction.response.send_message(embed=embed)
+
+        # ---------- /leaderboard ----------
+        @self.tree.command(name="leaderboard", description="Top XP du serveur")
+        async def leaderboard(interaction: discord.Interaction):
+            if not interaction.guild:
+                return await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+            lb = get_db().get_xp_leaderboard(str(interaction.guild.id), 15)
+            if not lb:
+                return await interaction.response.send_message("Aucune donnée XP.", ephemeral=True)
+            lines = []
+            medals = ["🥇", "🥈", "🥉"]
+            for i, entry in enumerate(lb):
+                prefix = medals[i] if i < 3 else f"`{i+1}.`"
+                lines.append(f"{prefix} <@{entry['user_id']}> — Niv.**{entry['level']}** ({entry['xp']:,} XP)")
+            embed = discord.Embed(
+                title=f"🏆 Leaderboard — {interaction.guild.name}",
+                description="\n".join(lines),
+                color=discord.Color.gold(),
+            )
+            await interaction.response.send_message(embed=embed)
+
+        # ---------- /poll ----------
+        @self.tree.command(name="poll", description="Créer un sondage")
+        async def poll(interaction: discord.Interaction, question: str,
+                       option1: str, option2: str,
+                       option3: Optional[str] = None, option4: Optional[str] = None,
+                       option5: Optional[str] = None):
+            if not interaction.guild:
+                return await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+
+            options = [o for o in [option1, option2, option3, option4, option5] if o]
+            emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+            desc = "\n".join(f"{emojis[i]} {opt}" for i, opt in enumerate(options))
+            embed = discord.Embed(
+                title=f"📊 {question}",
+                description=desc,
+                color=discord.Color.blurple(),
+            )
+            embed.set_footer(text=f"Sondage par {interaction.user.display_name}")
+            await interaction.response.send_message(embed=embed)
+            msg = await interaction.original_response()
+            for i in range(len(options)):
+                await msg.add_reaction(emojis[i])
+
+            get_db().create_poll(
+                str(interaction.guild.id), str(interaction.channel_id),
+                question, options, str(interaction.user.id), message_id=str(msg.id),
+            )
+
+        # ---------- /giveaway ----------
+        @self.tree.command(name="giveaway", description="Lancer un giveaway")
+        @app_commands.checks.has_permissions(manage_guild=True)
+        async def giveaway(interaction: discord.Interaction,
+                           prize: str, duration: str, winners: app_commands.Range[int, 1, 20] = 1):
+            """duration: e.g. 24h, 7d, 30m"""
+            if not interaction.guild:
+                return await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+
+            minutes = self._parse_duration(duration)
+            if minutes <= 0:
+                return await interaction.response.send_message(
+                    "Durée invalide. Exemples: `24h`, `7d`.", ephemeral=True)
+
+            ends = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+            embed = discord.Embed(
+                title="🎉 Giveaway !",
+                description=f"**{prize}**\n\nRéagis avec 🎉 pour participer !",
+                color=discord.Color.gold(),
+            )
+            embed.add_field(name="Gagnants", value=str(winners), inline=True)
+            embed.add_field(name="Fin", value=discord.utils.format_dt(ends, "R"), inline=True)
+            embed.set_footer(text=f"Organisé par {interaction.user.display_name}")
+
+            await interaction.response.send_message(embed=embed)
+            msg = await interaction.original_response()
+            await msg.add_reaction("🎉")
+
+            db = get_db()
+            gid = db.create_giveaway(
+                str(interaction.guild.id), str(interaction.channel_id), prize,
+                winners, ends.isoformat(timespec="seconds"), str(interaction.user.id),
+                str(msg.id),
+            )
+
+        # ---------- /remind ----------
+        @self.tree.command(name="remind", description="Programmer un rappel")
+        async def remind(interaction: discord.Interaction, duration: str, message: str):
+            """duration: e.g. 2h, 30m, 1d"""
+            if not interaction.guild:
+                return await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+
+            minutes = self._parse_duration(duration)
+            if minutes <= 0:
+                return await interaction.response.send_message(
+                    "Durée invalide. Exemples: `2h`, `30m`, `1d`.", ephemeral=True)
+
+            remind_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+            get_db().add_reminder(
+                str(interaction.guild.id), str(interaction.channel_id),
+                str(interaction.user.id), message,
+                remind_at.isoformat(timespec="seconds"),
+            )
+
+            embed = discord.Embed(
+                title="⏰ Rappel programmé",
+                description=f"Je te rappellerai dans **{duration}** :\n> {message}",
+                color=discord.Color.blue(),
+            )
+            embed.add_field(name="Quand", value=discord.utils.format_dt(remind_at, "R"), inline=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        # ---------- /ticket ----------
+        @self.tree.command(name="ticket", description="Envoyer le panneau de tickets dans ce salon")
+        @app_commands.checks.has_permissions(manage_channels=True)
+        async def ticket_panel(interaction: discord.Interaction):
+            if not interaction.guild:
+                return await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+
+            cfg = get_db().get_guild_config(str(interaction.guild.id))
+            if not cfg.get("tickets_enabled"):
+                return await interaction.response.send_message(
+                    "Le système de tickets n'est pas activé dans les paramètres.", ephemeral=True)
+
+            from .features.tickets import TicketOpenButton
+            embed = discord.Embed(
+                title="🎟️ Support",
+                description="Clique sur le bouton ci-dessous pour ouvrir un ticket.\nUn salon privé sera créé pour toi.",
+                color=discord.Color.green(),
+            )
+            await interaction.channel.send(embed=embed, view=TicketOpenButton())
+            await interaction.response.send_message("Panneau de tickets envoyé !", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _parse_duration(s: str) -> int:
+        """Parse a duration string like '7d', '12h', '30m' into minutes."""
+        s = s.strip().lower()
+        try:
+            if s.endswith("d"):
+                return int(s[:-1]) * 1440
+            elif s.endswith("h"):
+                return int(s[:-1]) * 60
+            elif s.endswith("m"):
+                return int(s[:-1])
+            else:
+                return int(s)  # assume minutes
+        except ValueError:
+            return 0
 
     # ------------------------------------------------------------------
     # Escalation

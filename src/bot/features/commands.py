@@ -61,7 +61,7 @@ class CommandsFeature:
             embed.add_field(
                 name="⚔️ Modération (slash)",
                 value=(
-                    "`/ban` `/kick` `/timeout` — Modération\n"
+                    "`/ban` `/kick` `/timeout` `/tempban` — Modération\n"
                     "`/warn` `/warnings` `/unwarn` — Avertissements\n"
                     "`/purge` — Supprimer des messages"
                 ),
@@ -73,9 +73,24 @@ class CommandsFeature:
                 inline=False,
             )
             embed.add_field(
+                name="🎮 Engagement (slash)",
+                value=(
+                    "`/rank` — Voir son niveau et XP\n"
+                    "`/leaderboard` — Classement XP du serveur\n"
+                    "`/poll` — Créer un sondage\n"
+                    "`/giveaway` — Lancer un giveaway\n"
+                    "`/remind` — Rappel personnel\n"
+                    "`/ticket` — Envoyer un embed de tickets"
+                ),
+                inline=False,
+            )
+            embed.add_field(
                 name="🤖 Fonctionnalités",
                 value=(
                     "**Role triggers** · **Keyword responses** · **Grant commands**\n"
+                    "**Custom commands** · **Reaction roles** · **Starboard**\n"
+                    "**Anti-raid** · **Anti-spam** · **Anti-lien** · **Audit logs**\n"
+                    "**XP/Niveaux** · **Tickets** · **Messages programmés**\n"
                     "**Ollama Q&A** · **Auto-modération**\n"
                     "Tout est configurable via le panel web."
                 ),

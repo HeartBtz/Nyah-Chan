@@ -58,7 +58,12 @@
             <li><strong>Rôles</strong> — Attribution ou retrait automatique de rôles Discord lorsqu'un membre écrit un mot déclencheur.</li>
             <li><strong>Grant</strong> — Commandes personnalisées (ex: <code>!vip</code>) permettant à certains utilisateurs d'attribuer un rôle à un autre membre.</li>
             <li><strong>Warnings</strong> — Historique des avertissements donnés via <code>/warn</code>. Possibilité de supprimer un warning.</li>
-            <li><strong>Paramètres</strong> — Configuration globale : préfixe, bienvenue, au revoir, auto-modération, Ollama, journal de modération, et règles d'escalade.</li>
+            <li><strong>Custom Cmds</strong> — Commandes textuelles personnalisées avec réponse texte ou embed.</li>
+            <li><strong>Reaction Roles</strong> — Attribution de rôles par réaction emoji sur un message.</li>
+            <li><strong>Scheduled</strong> — Messages programmés envoyés à une date/heure ou de façon récurrente.</li>
+            <li><strong>XP / Niveaux</strong> — Système d'expérience, leaderboard et récompenses de rôles par niveau.</li>
+            <li><strong>Audit</strong> — Journal des actions WebUI et gestion des rôles des membres.</li>
+            <li><strong>Paramètres</strong> — Configuration globale : bienvenue, auto-mod, anti-raid, anti-spam, anti-lien, starboard, XP, tickets, Ollama, et plus.</li>
         </ul>
     </div>
     <div class="help-box">
@@ -66,9 +71,14 @@
         <p>En plus de la WebUI, Nyah-Chan dispose de commandes slash utilisables directement dans Discord :</p>
         <ul>
             <li><code>/warn</code> <code>/unwarn</code> <code>/warnings</code> — Gestion des avertissements</li>
-            <li><code>/ban</code> <code>/kick</code> <code>/timeout</code> — Actions de modération</li>
+            <li><code>/ban</code> <code>/kick</code> <code>/timeout</code> <code>/tempban</code> — Actions de modération</li>
             <li><code>/purge</code> — Suppression de messages en masse</li>
             <li><code>/serverinfo</code> <code>/userinfo</code> <code>/avatar</code> — Informations</li>
+            <li><code>/rank</code> <code>/leaderboard</code> — Système XP</li>
+            <li><code>/poll</code> — Créer un sondage</li>
+            <li><code>/giveaway</code> — Lancer un giveaway</li>
+            <li><code>/remind</code> — Rappels personnels</li>
+            <li><code>/ticket</code> — Envoyer un embed de création de ticket</li>
         </ul>
     </div>
     <div class="help-box">
@@ -76,4 +86,57 @@
         <p>Seuls les utilisateurs ayant la permission <strong>Administrateur</strong> sur le serveur Discord <em>et</em> étant sur un serveur où Nyah-Chan est présente peuvent accéder à ce panneau. L'authentification passe par Discord OAuth2.</p>
     </div>
 </div>
+
+<!-- Activity Charts -->
+<div class="card">
+    <div class="card-header">
+        <h2>Activité du serveur</h2>
+        <select id="chart-days" onchange="loadActivity()" class="guild-select" style="max-width:120px">
+            <option value="7">7 jours</option>
+            <option value="14">14 jours</option>
+            <option value="30" selected>30 jours</option>
+        </select>
+    </div>
+    <div id="chart-container" class="chart-container">
+        <p class="text-muted" style="text-align:center;padding:1.5rem">Chargement…</p>
+    </div>
+</div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+async function loadActivity() {
+    const days = document.getElementById('chart-days').value;
+    const res = await authFetch('/api/activity?days=' + days);
+    if (!res) return;
+    const data = await res.json();
+    renderChart(data);
+}
+
+function renderChart(data) {
+    const el = document.getElementById('chart-container');
+    if (!data.length) {
+        el.innerHTML = '<p class="text-muted" style="text-align:center;padding:1.5rem">Aucune donnée d\'activité.</p>';
+        return;
+    }
+    const max = Math.max(...data.map(d => d.count), 1);
+    const bars = data.map(d => {
+        const pct = Math.max((d.count / max) * 100, 2);
+        const label = d.date ? d.date.substring(5) : d.metric;
+        const color = d.metric === 'messages' ? 'var(--accent-blue)' : d.metric === 'joins' ? 'var(--accent-green)' : 'var(--accent-yellow)';
+        return `<div class="chart-bar-group">
+            <div class="chart-bar" style="height:${pct}%;background:${color}" title="${d.metric}: ${d.count}"></div>
+            <span class="chart-label">${label}</span>
+        </div>`;
+    }).join('');
+    // Group by metric for legend
+    const metrics = [...new Set(data.map(d => d.metric))];
+    const legend = metrics.map(m => {
+        const color = m === 'messages' ? 'var(--accent-blue)' : m === 'joins' ? 'var(--accent-green)' : 'var(--accent-yellow)';
+        return `<span class="chart-legend-item"><span class="chart-legend-dot" style="background:${color}"></span>${m}</span>`;
+    }).join(' ');
+    el.innerHTML = `<div class="chart-legend">${legend}</div><div class="chart-bars">${bars}</div>`;
+}
+
+loadActivity();
+</script>

@@ -1,4 +1,4 @@
-"""Member join / leave events — welcome and goodbye messages."""
+"""Member join / leave events — welcome and goodbye messages + activity tracking."""
 from __future__ import annotations
 
 import logging
@@ -13,6 +13,12 @@ logger = logging.getLogger("nyahchan.events.member")
 def setup_member_events(client: discord.Client) -> None:
     @client.event
     async def on_member_join(member: discord.Member) -> None:
+        # Track join activity
+        try:
+            get_db().increment_activity(str(member.guild.id), "joins")
+        except Exception:
+            pass
+
         cfg = get_db().get_guild_config(str(member.guild.id))
         if not cfg.get("welcome_enabled"):
             return
@@ -35,6 +41,12 @@ def setup_member_events(client: discord.Client) -> None:
 
     @client.event
     async def on_member_remove(member: discord.Member) -> None:
+        # Track leave activity
+        try:
+            get_db().increment_activity(str(member.guild.id), "leaves")
+        except Exception:
+            pass
+
         cfg = get_db().get_guild_config(str(member.guild.id))
         if not cfg.get("goodbye_enabled"):
             return

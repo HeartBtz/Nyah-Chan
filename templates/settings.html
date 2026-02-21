@@ -14,9 +14,15 @@
             <li><strong>Général</strong> — Préfixe des commandes textuelles et réactions automatiques.</li>
             <li><strong>Bienvenue / Au revoir</strong> — Messages envoyés quand un membre rejoint ou quitte le serveur.</li>
             <li><strong>Auto-modération</strong> — Filtre automatique des mots interdits, spam de mentions et abus de majuscules.</li>
+            <li><strong>Anti-raid / Anti-spam / Anti-lien</strong> — Protections avancées contre les raids, le flood et les liens.</li>
             <li><strong>Journal de mod</strong> — Salon où les actions de modération sont enregistrées.</li>
+            <li><strong>Audit Logs</strong> — Journalisation automatique des edits/suppressions de messages, changements vocaux et pseudos.</li>
+            <li><strong>Starboard</strong> — Reposte les messages les plus étoilés dans un salon dédié.</li>
+            <li><strong>XP / Niveaux</strong> — Système d'expérience et de niveaux avec récompenses de rôles.</li>
+            <li><strong>Tickets</strong> — Système de tickets de support par boutons.</li>
             <li><strong>Ollama</strong> — Intégration d'un LLM local pour répondre aux questions des membres.</li>
             <li><strong>Escalade</strong> — Actions automatiques quand un membre accumule trop de warnings.</li>
+            <li><strong>Sauvegarde</strong> — Exporter/Importer la configuration du serveur.</li>
         </ul>
     </details>
 </div>
@@ -127,6 +133,186 @@
     </div>
 </div>
 
+<!-- Anti-raid -->
+<div class="card">
+    <div class="card-header"><h2>Anti-raid</h2></div>
+    <p class="help-section-note">Détecte un afflux massif de nouveaux membres (probable raid) et applique automatiquement une action (kick ou ban) aux arrivants.</p>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-antiraid_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer l'anti-raid</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Seuil (nombre de joins)</label>
+            <input type="number" id="cfg-antiraid_join_count" min="2" max="50" placeholder="10">
+        </div>
+        <div class="form-group">
+            <label>Fenêtre (secondes)</label>
+            <input type="number" id="cfg-antiraid_join_seconds" min="1" max="300" placeholder="10">
+        </div>
+        <div class="form-group">
+            <label>Action</label>
+            <select id="cfg-antiraid_action">
+                <option value="kick">Kick</option>
+                <option value="ban">Ban</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Anti-spam -->
+<div class="card">
+    <div class="card-header"><h2>Anti-spam</h2></div>
+    <p class="help-section-note">Détecte le flood de messages d'un même utilisateur et le timeout automatiquement.</p>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-antispam_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer l'anti-spam</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Max messages</label>
+            <input type="number" id="cfg-antispam_max_messages" min="2" max="30" placeholder="5">
+        </div>
+        <div class="form-group">
+            <label>Intervalle (secondes)</label>
+            <input type="number" id="cfg-antispam_interval_seconds" min="1" max="60" placeholder="5">
+        </div>
+        <div class="form-group">
+            <label>Durée mute (minutes)</label>
+            <input type="number" id="cfg-antispam_mute_minutes" min="1" max="1440" placeholder="5">
+        </div>
+    </div>
+</div>
+
+<!-- Anti-link -->
+<div class="card">
+    <div class="card-header"><h2>Anti-lien</h2></div>
+    <p class="help-section-note">Bloque les URLs et les invitations Discord. Les domaines dans la whitelist sont autorisés (séparés par des virgules).</p>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-antilink_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer l'anti-lien</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="cfg-antilink_block_discord_invites" style="width:auto;margin-right:0.5rem">
+                Bloquer les invitations Discord
+            </label>
+        </div>
+    </div>
+    <div class="form-group">
+        <label>Whitelist de domaines (virgule séparés)</label>
+        <textarea id="cfg-antilink_whitelist_domains" rows="2" placeholder="youtube.com, github.com, discord.com"></textarea>
+    </div>
+</div>
+
+<!-- Audit logs -->
+<div class="card">
+    <div class="card-header"><h2>Audit Logs avancés</h2></div>
+    <p class="help-section-note">Journalise automatiquement les éditions/suppressions de messages, les changements de salon vocal et les modifications de pseudo dans un salon dédié.</p>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-audit_log_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer les audit logs</span>
+    </div>
+    <div class="form-group">
+        <label>Channel ID audit log</label>
+        <input type="text" id="cfg-audit_log_channel_id" placeholder="ID du salon">
+    </div>
+</div>
+
+<!-- Starboard -->
+<div class="card">
+    <div class="card-header"><h2>Starboard</h2></div>
+    <p class="help-section-note">Quand un message reçoit suffisamment de réactions ⭐, il est automatiquement reposté dans un salon dédié.</p>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-starboard_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer le starboard</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Channel ID starboard</label>
+            <input type="text" id="cfg-starboard_channel_id" placeholder="ID du salon">
+        </div>
+        <div class="form-group">
+            <label>Seuil d'étoiles</label>
+            <input type="number" id="cfg-starboard_threshold" min="1" max="50" placeholder="3">
+        </div>
+        <div class="form-group">
+            <label>Emoji</label>
+            <input type="text" id="cfg-starboard_emoji" placeholder="⭐">
+        </div>
+    </div>
+</div>
+
+<!-- XP -->
+<div class="card">
+    <div class="card-header"><h2>Système XP / Niveaux</h2></div>
+    <p class="help-section-note">Les membres gagnent de l'XP en discutant. Montées de niveau annoncées automatiquement. Configurez les récompenses de rôles sur la page XP.</p>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-xp_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer le système XP</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>XP min par message</label>
+            <input type="number" id="cfg-xp_min" min="1" max="1000" placeholder="15">
+        </div>
+        <div class="form-group">
+            <label>XP max par message</label>
+            <input type="number" id="cfg-xp_max" min="1" max="1000" placeholder="25">
+        </div>
+        <div class="form-group">
+            <label>Cooldown (secondes)</label>
+            <input type="number" id="cfg-xp_cooldown_seconds" min="0" max="600" placeholder="60">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>Channel ID annonces level-up (vide = même salon)</label>
+        <input type="text" id="cfg-xp_level_up_channel_id" placeholder="ID du salon">
+    </div>
+</div>
+
+<!-- Tickets -->
+<div class="card">
+    <div class="card-header"><h2>Tickets</h2></div>
+    <p class="help-section-note">Système de tickets de support. Utilisez <code>/ticket</code> pour envoyer un embed avec un bouton qui crée des salons privés de ticket.</p>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-tickets_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer les tickets</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Catégorie ID (tickets créés dedans)</label>
+            <input type="text" id="cfg-tickets_category_id" placeholder="ID de la catégorie">
+        </div>
+        <div class="form-group">
+            <label>Rôle support ID</label>
+            <input type="text" id="cfg-tickets_support_role" placeholder="ID du rôle support">
+        </div>
+    </div>
+</div>
+
 <!-- Ollama -->
 <div class="card">
     <div class="card-header"><h2>Ollama Q&A</h2></div>
@@ -183,6 +369,17 @@
     </div>
 </div>
 
+<!-- Config backup -->
+<div class="card">
+    <div class="card-header"><h2>Sauvegarde de configuration</h2></div>
+    <p class="help-section-note">Exportez toute la configuration du serveur en JSON, ou importez une configuration précédemment sauvegardée.</p>
+    <div class="btn-group">
+        <button class="btn btn-secondary" onclick="exportConfig()">📤 Exporter</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">📥 Importer</button>
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(this)">
+    </div>
+</div>
+
 <div class="btn-group" style="margin-top:1.5rem">
     <button class="btn btn-success" onclick="saveAll()">Sauvegarder tout</button>
 </div>
@@ -196,9 +393,18 @@ const CFG_FIELDS = [
     'goodbye_enabled','goodbye_channel_id','goodbye_message',
     'automod_enabled','automod_bad_words','automod_max_mentions','automod_max_caps_percent',
     'mod_log_channel_id',
+    'antiraid_enabled','antiraid_join_count','antiraid_join_seconds','antiraid_action',
+    'antispam_enabled','antispam_max_messages','antispam_interval_seconds','antispam_mute_minutes',
+    'antilink_enabled','antilink_block_discord_invites','antilink_whitelist_domains',
+    'audit_log_enabled','audit_log_channel_id',
+    'starboard_enabled','starboard_channel_id','starboard_threshold','starboard_emoji',
+    'xp_enabled','xp_min','xp_max','xp_cooldown_seconds','xp_level_up_channel_id',
+    'tickets_enabled','tickets_category_id','tickets_support_role',
     'ollama_enabled','ollama_base_url','ollama_model','ollama_timeout','ollama_system_prompt'
 ];
-const TOGGLES = ['reactions_enabled','welcome_enabled','goodbye_enabled','automod_enabled','ollama_enabled'];
+const TOGGLES = ['reactions_enabled','welcome_enabled','goodbye_enabled','automod_enabled',
+    'antiraid_enabled','antispam_enabled','antilink_enabled','antilink_block_discord_invites',
+    'audit_log_enabled','starboard_enabled','xp_enabled','tickets_enabled','ollama_enabled'];
 let escalation = [];
 
 async function load() {
@@ -255,5 +461,36 @@ async function saveAll() {
 }
 
 load();
+
+async function exportConfig() {
+    const res = await authFetch('/api/backup/export');
+    if (!res) return;
+    const data = await res.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'nyahchan-config-backup.json';
+    a.click();
+    showToast('Configuration exportée !');
+}
+
+async function importConfig(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+        const data = JSON.parse(text);
+        const res = await authFetch('/api/backup/import', {method:'POST', body: data});
+        if (res && res.ok) {
+            showToast('Configuration importée ! Rechargement…');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast('Erreur lors de l\'import', 'error');
+        }
+    } catch(e) {
+        showToast('Fichier JSON invalide', 'error');
+    }
+    input.value = '';
+}
 </script>
 {% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — Nyah-Chan{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Audit Log WebUI</h1>
+    <p>Historique des actions effectuées via le panneau d'administration</p>
+</div>
+
+<div class="help-box">
+    <p>Chaque modification apportée à la configuration via cette WebUI est enregistrée ici. Vous pouvez voir qui a fait quoi et quand.</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Dernières actions</h2>
+        <button class="btn btn-secondary btn-sm" onclick="load()">🔄 Rafraîchir</button>
+    </div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead><tr>
+                <th>Date</th>
+                <th>Utilisateur</th>
+                <th>Action</th>
+                <th>Détails</th>
+            </tr></thead>
+            <tbody id="log-body">
+                <tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.5rem">Chargement…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Role management -->
+<div class="card">
+    <div class="card-header">
+        <h2>Gestion des rôles</h2>
+    </div>
+    <p class="help-section-note">Recherchez un membre pour ajouter ou retirer des rôles directement depuis la WebUI.</p>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Rechercher un membre</label>
+            <input type="text" id="member-search" placeholder="Nom d'utilisateur..." oninput="searchMembers(this.value)">
+        </div>
+    </div>
+    <div id="member-results"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRoles = [];
+
+async function load() {
+    const [logRes, rolesRes] = await Promise.all([
+        authFetch('/api/audit-log'),
+        authFetch('/api/guild-roles'),
+    ]);
+    if (logRes) {
+        const logs = await logRes.json();
+        renderLogs(logs);
+    }
+    if (rolesRes) {
+        allRoles = await rolesRes.json();
+    }
+}
+
+function renderLogs(logs) {
+    const tb = document.getElementById('log-body');
+    if (!logs.length) {
+        tb.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.5rem">Aucune entrée.</td></tr>';
+        return;
+    }
+    tb.innerHTML = logs.map(l => `<tr>
+        <td><span class="text-muted text-sm">${esc(l.timestamp||'')}</span></td>
+        <td>${esc(l.username||l.user_id||'')}</td>
+        <td><span class="tag">${esc(l.action||'')}</span></td>
+        <td>${esc(l.detail||'')}</td>
+    </tr>`).join('');
+}
+
+let searchTimeout;
+function searchMembers(q) {
+    clearTimeout(searchTimeout);
+    if (q.length < 2) { document.getElementById('member-results').innerHTML = ''; return; }
+    searchTimeout = setTimeout(async () => {
+        const res = await authFetch('/api/guild-members?search=' + encodeURIComponent(q));
+        if (!res) return;
+        const members = await res.json();
+        renderMembers(members);
+    }, 300);
+}
+
+function renderMembers(members) {
+    const el = document.getElementById('member-results');
+    if (!members.length) {
+        el.innerHTML = '<p class="text-muted" style="padding:0.5rem">Aucun membre trouvé.</p>';
+        return;
+    }
+    el.innerHTML = members.slice(0, 20).map(m => {
+        const roleChips = allRoles.map(r => {
+            const has = m.roles.includes(r.id);
+            return `<span class="role-chip ${has ? 'active' : ''}" data-mid="${m.id}" data-rid="${r.id}" onclick="toggleRole(this, '${m.id}', '${r.id}', ${has})"
+                style="border-color:${r.color}">${has ? '✓' : '+'} ${esc(r.name)}</span>`;
+        }).join(' ');
+        return `<div class="member-row">
+            <img src="${m.avatar}" class="user-avatar" alt="">
+            <div>
+                <strong>${esc(m.name)}</strong>
+                ${m.nick ? '<span class="text-muted text-sm"> (' + esc(m.nick) + ')</span>' : ''}
+                <div class="role-chips mt-1">${roleChips}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function toggleRole(chip, mid, rid, has) {
+    const body = has ? {remove: [rid]} : {add: [rid]};
+    const res = await authFetch('/api/guild-members/' + mid + '/roles', {method:'POST', body});
+    if (res && res.ok) {
+        chip.classList.toggle('active');
+        const newHas = !has;
+        chip.innerHTML = (newHas ? '✓' : '+') + ' ' + chip.textContent.substring(2);
+        chip.setAttribute('onclick', `toggleRole(this, '${mid}', '${rid}', ${newHas})`);
+        showToast('Rôle mis à jour !');
+    } else {
+        showToast('Erreur lors de la modification du rôle', 'error');
+    }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
+</script>
+{% endblock %}

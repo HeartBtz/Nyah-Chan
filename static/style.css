@@ -996,3 +996,170 @@ tbody tr:hover {
     margin-bottom: 0.5rem;
     line-height: 1.5;
 }
+
+/* --- Nav Dropdown --- */
+.nav-dropdown {
+    position: relative;
+    display: inline-block;
+}
+.nav-dropdown > a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: var(--transition);
+    cursor: pointer;
+}
+.nav-dropdown > a:hover,
+.nav-dropdown > a.active {
+    color: var(--accent);
+    background: rgba(233, 69, 96, 0.1);
+}
+.nav-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    z-index: 200;
+    padding: 0.25rem 0;
+    margin-top: 0.25rem;
+}
+.nav-dropdown:hover .nav-dropdown-menu {
+    display: block;
+}
+.nav-dropdown-menu a {
+    display: block;
+    padding: 0.5rem 1rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: var(--transition);
+    border-radius: 0;
+}
+.nav-dropdown-menu a:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.nav-dropdown-menu a.active {
+    color: var(--accent);
+    background: rgba(233, 69, 96, 0.08);
+}
+
+/* --- Activity Charts --- */
+.chart-container {
+    min-height: 200px;
+}
+.chart-legend {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0.5rem 0 1rem;
+    font-size: 0.8rem;
+}
+.chart-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-secondary);
+}
+.chart-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.chart-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 180px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1.5rem;
+    overflow-x: auto;
+}
+.chart-bar-group {
+    flex: 1;
+    min-width: 14px;
+    max-width: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+}
+.chart-bar {
+    width: 100%;
+    border-radius: 3px 3px 0 0;
+    transition: height 0.3s ease;
+    min-height: 2px;
+    cursor: pointer;
+}
+.chart-bar:hover {
+    opacity: 0.8;
+}
+.chart-label {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+    white-space: nowrap;
+    writing-mode: vertical-lr;
+    text-orientation: mixed;
+    max-height: 40px;
+    overflow: hidden;
+}
+
+/* --- Role Chips (Audit / Role management) --- */
+.role-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+.role-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    transition: var(--transition);
+}
+.role-chip:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-primary);
+}
+.role-chip.active {
+    background: rgba(0, 210, 211, 0.12);
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+}
+
+/* --- Member Row --- */
+.member-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: var(--transition);
+}
+.member-row:hover {
+    background: rgba(255,255,255,0.02);
+}
+.member-row img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}

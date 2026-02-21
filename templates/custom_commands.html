@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Custom Commands — Nyah-Chan{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Custom Commands</h1>
+    <p>Commandes personnalisées créées via la WebUI</p>
+</div>
+
+<div class="help-box">
+    <details open>
+        <summary>💡 Comment fonctionnent les custom commands ?</summary>
+        <p>Créez des commandes textuelles personnalisées que les membres peuvent déclencher avec le <strong>préfixe</strong> du bot (ex: <code>!hello</code>).</p>
+        <ul>
+            <li><strong>Nom</strong> — Le nom de la commande (sans le préfixe). Ex: <code>hello</code> pour déclencher <code>!hello</code>.</li>
+            <li><strong>Type</strong> — <code>text</code> pour une réponse simple, <code>embed</code> pour un embed Discord.</li>
+            <li><strong>Réponse</strong> — Le contenu de la réponse. Pour les embeds, utilisez du JSON avec les clés: title, description, color.</li>
+        </ul>
+    </details>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Liste des commandes</h2>
+        <button class="btn btn-primary btn-sm" onclick="addCmd()">+ Ajouter</button>
+    </div>
+    <div id="cmd-list"></div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="saveCmds()">Sauvegarder</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let cmds = [];
+
+async function load() {
+    const res = await authFetch('/api/custom-commands');
+    if (!res) return;
+    cmds = await res.json();
+    render();
+}
+
+function render() {
+    const el = document.getElementById('cmd-list');
+    if (!cmds.length) {
+        el.innerHTML = '<div class="empty-state"><p>Aucune commande personnalisée.</p></div>';
+        return;
+    }
+    el.innerHTML = cmds.map((c, i) => `
+        <div class="card" style="margin-bottom:0.75rem">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nom de la commande</label>
+                    <input type="text" value="${esc(c.name||'')}" onchange="cmds[${i}].name=this.value" placeholder="hello">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select onchange="cmds[${i}].response_type=this.value">
+                        <option value="text" ${(c.response_type||'text')==='text'?'selected':''}>Texte</option>
+                        <option value="embed" ${c.response_type==='embed'?'selected':''}>Embed</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Réponse</label>
+                <textarea rows="3" onchange="cmds[${i}].response=this.value" placeholder="Salut {user} !">${esc(c.response||'')}</textarea>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="cmds.splice(${i},1);render()">Supprimer</button>
+        </div>
+    `).join('');
+}
+
+function addCmd() {
+    cmds.push({name:'', response_type:'text', response:''});
+    render();
+}
+
+async function saveCmds() {
+    const res = await authFetch('/api/custom-commands', {method:'POST', body: cmds});
+    if (res && res.ok) showToast('Commandes sauvegardées !');
+    else showToast('Erreur lors de la sauvegarde', 'error');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
+</script>
+{% endblock %}

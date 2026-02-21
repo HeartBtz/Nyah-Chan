@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Scheduled Messages — Nyah-Chan{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Messages programmés</h1>
+    <p>Envoi automatique de messages à une date/heure précise ou de façon récurrente</p>
+</div>
+
+<div class="help-box">
+    <details open>
+        <summary>💡 Comment fonctionnent les messages programmés ?</summary>
+        <ul>
+            <li><strong>Channel ID</strong> — Salon de destination pour le message.</li>
+            <li><strong>Contenu</strong> — Texte du message à envoyer.</li>
+            <li><strong>Date/heure</strong> — Format : <code>YYYY-MM-DD HH:MM</code> (UTC). Ex: <code>2025-01-15 18:00</code>.</li>
+            <li><strong>Récurrent</strong> — Si activé, le message est renvoyé selon l'intervalle défini (en minutes). 0 = pas de récurrence.</li>
+        </ul>
+    </details>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Liste des messages</h2>
+        <button class="btn btn-primary btn-sm" onclick="addMsg()">+ Ajouter</button>
+    </div>
+    <div id="msg-list"></div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="saveMsgs()">Sauvegarder</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let items = [];
+
+async function load() {
+    const res = await authFetch('/api/scheduled');
+    if (!res) return;
+    items = await res.json();
+    render();
+}
+
+function render() {
+    const el = document.getElementById('msg-list');
+    if (!items.length) {
+        el.innerHTML = '<div class="empty-state"><p>Aucun message programmé.</p></div>';
+        return;
+    }
+    el.innerHTML = items.map((m, i) => `
+        <div class="card" style="margin-bottom:0.75rem">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Channel ID</label>
+                    <input type="text" value="${esc(m.channel_id||'')}" onchange="items[${i}].channel_id=this.value">
+                </div>
+                <div class="form-group">
+                    <label>Date/heure (UTC)</label>
+                    <input type="text" value="${esc(m.send_at||'')}" onchange="items[${i}].send_at=this.value" placeholder="2025-01-15 18:00">
+                </div>
+                <div class="form-group">
+                    <label>Récurrence (minutes, 0=unique)</label>
+                    <input type="number" value="${m.recurring_minutes||0}" min="0" onchange="items[${i}].recurring_minutes=+this.value">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Contenu du message</label>
+                <textarea rows="2" onchange="items[${i}].content=this.value">${esc(m.content||'')}</textarea>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="items.splice(${i},1);render()">Supprimer</button>
+        </div>
+    `).join('');
+}
+
+function addMsg() {
+    items.push({channel_id:'', content:'', send_at:'', recurring_minutes:0});
+    render();
+}
+
+async function saveMsgs() {
+    const res = await authFetch('/api/scheduled', {method:'POST', body: items});
+    if (res && res.ok) showToast('Messages programmés sauvegardés !');
+    else showToast('Erreur lors de la sauvegarde', 'error');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
+</script>
+{% endblock %}

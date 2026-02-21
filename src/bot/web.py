@@ -307,6 +307,67 @@ async def ui_settings(request: Request):
     return resp
 
 
+# ---------- New UI pages ----------
+@app.get("/ui/custom-commands", response_class=HTMLResponse)
+async def ui_custom_commands(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "custom_commands")
+    resp = templates.TemplateResponse("custom_commands.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
+
+
+@app.get("/ui/reaction-roles", response_class=HTMLResponse)
+async def ui_reaction_roles(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "reaction_roles")
+    resp = templates.TemplateResponse("reaction_roles.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
+
+
+@app.get("/ui/scheduled", response_class=HTMLResponse)
+async def ui_scheduled(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "scheduled")
+    resp = templates.TemplateResponse("scheduled.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
+
+
+@app.get("/ui/xp", response_class=HTMLResponse)
+async def ui_xp(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "xp")
+    resp = templates.TemplateResponse("xp.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
+
+
+@app.get("/ui/audit-log", response_class=HTMLResponse)
+async def ui_audit_log(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "audit_log")
+    resp = templates.TemplateResponse("audit_log.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
+
+
 # ---------------------------------------------------------------------------
 # API: health (public)
 # ---------------------------------------------------------------------------
@@ -383,6 +444,7 @@ async def api_settings_post(request: Request):
         get_db().save_guild_config(gid, **config)
     if escalation is not None:
         get_db().save_escalation_rules(gid, escalation)
+    _audit(request, sess, gid, "settings", "Updated guild settings")
     return {"ok": True}
 
 
@@ -410,6 +472,7 @@ async def api_keywords_post(request: Request):
         return JSONResponse({"error": "no guild"}, 400)
     data = await request.json()
     get_db().save_keywords(gid, data if isinstance(data, list) else [])
+    _audit(request, sess, gid, "keywords", "Saved keyword responses")
     return {"ok": True}
 
 
@@ -437,6 +500,7 @@ async def api_roles_post(request: Request):
         return JSONResponse({"error": "no guild"}, 400)
     data = await request.json()
     get_db().save_role_triggers(gid, data if isinstance(data, list) else [])
+    _audit(request, sess, gid, "roles", "Saved role triggers")
     return {"ok": True}
 
 
@@ -464,6 +528,7 @@ async def api_grant_post(request: Request):
         return JSONResponse({"error": "no guild"}, 400)
     data = await request.json()
     get_db().save_grant_commands(gid, data if isinstance(data, list) else [])
+    _audit(request, sess, gid, "grant", "Saved grant commands")
     return {"ok": True}
 
 
@@ -509,6 +574,298 @@ async def api_stats(request: Request):
         "uptime": format_uptime(_bot_state.get("started_at", "")),
         "warnings": get_db().total_warning_count(),
     }
+
+
+# ---------------------------------------------------------------------------
+# API: custom commands
+# ---------------------------------------------------------------------------
+@app.get("/api/custom-commands")
+async def api_custom_commands_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_custom_commands(gid)
+
+
+@app.post("/api/custom-commands")
+async def api_custom_commands_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().save_custom_commands(gid, data if isinstance(data, list) else [])
+    _audit(request, sess, gid, "custom_commands", "Saved custom commands")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: reaction roles
+# ---------------------------------------------------------------------------
+@app.get("/api/reaction-roles")
+async def api_reaction_roles_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_reaction_roles(gid)
+
+
+@app.post("/api/reaction-roles")
+async def api_reaction_roles_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().save_reaction_roles(gid, data if isinstance(data, list) else [])
+    _audit(request, sess, gid, "reaction_roles", "Saved reaction roles")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: scheduled messages
+# ---------------------------------------------------------------------------
+@app.get("/api/scheduled")
+async def api_scheduled_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_scheduled_messages(gid)
+
+
+@app.post("/api/scheduled")
+async def api_scheduled_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().save_scheduled_messages(gid, data if isinstance(data, list) else [])
+    _audit(request, sess, gid, "scheduled_messages", "Saved scheduled messages")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: XP role rewards
+# ---------------------------------------------------------------------------
+@app.get("/api/xp-rewards")
+async def api_xp_rewards_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_xp_role_rewards(gid)
+
+
+@app.post("/api/xp-rewards")
+async def api_xp_rewards_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().save_xp_role_rewards(gid, data if isinstance(data, list) else [])
+    _audit(request, sess, gid, "xp_rewards", "Saved XP rewards")
+    return {"ok": True}
+
+
+@app.get("/api/xp-leaderboard")
+async def api_xp_leaderboard(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_xp_leaderboard(gid, 50)
+
+
+# ---------------------------------------------------------------------------
+# API: activity stats (charts)
+# ---------------------------------------------------------------------------
+@app.get("/api/activity")
+async def api_activity(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    days = int(request.query_params.get("days", "30"))
+    return get_db().get_activity_stats(gid, days)
+
+
+# ---------------------------------------------------------------------------
+# API: audit log (WebUI)
+# ---------------------------------------------------------------------------
+@app.get("/api/audit-log")
+async def api_audit_log(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_audit_logs(gid, 200)
+
+
+# ---------------------------------------------------------------------------
+# API: config backup (export / import)
+# ---------------------------------------------------------------------------
+@app.get("/api/backup/export")
+async def api_backup_export(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    _audit(request, sess, gid, "backup_export", "Exported config backup")
+    return get_db().export_guild_config(gid)
+
+
+@app.post("/api/backup/import")
+async def api_backup_import(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().import_guild_config(gid, data)
+    _audit(request, sess, gid, "backup_import", "Imported config backup")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: guild roles (for role management)
+# ---------------------------------------------------------------------------
+@app.get("/api/guild-roles")
+async def api_guild_roles(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    client = _bot_state.get("client")
+    if not client:
+        return JSONResponse({"error": "bot offline"}, 503)
+    guild = client.get_guild(int(gid))
+    if not guild:
+        return JSONResponse({"error": "guild not found"}, 404)
+    roles = []
+    for r in sorted(guild.roles, key=lambda x: x.position, reverse=True):
+        if r.is_default():
+            continue
+        roles.append({
+            "id": str(r.id), "name": r.name, "color": str(r.color),
+            "position": r.position, "members": len(r.members),
+        })
+    return roles
+
+
+@app.get("/api/guild-members")
+async def api_guild_members(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    client = _bot_state.get("client")
+    if not client:
+        return JSONResponse({"error": "bot offline"}, 503)
+    guild = client.get_guild(int(gid))
+    if not guild:
+        return JSONResponse({"error": "guild not found"}, 404)
+    search = (request.query_params.get("search") or "").lower()
+    members = []
+    for m in guild.members:
+        if m.bot:
+            continue
+        if search and search not in m.name.lower() and search not in (m.nick or "").lower():
+            continue
+        members.append({
+            "id": str(m.id), "name": str(m), "nick": m.nick,
+            "avatar": m.display_avatar.url,
+            "roles": [str(r.id) for r in m.roles if not r.is_default()],
+        })
+        if len(members) >= 100:
+            break
+    return members
+
+
+@app.post("/api/guild-members/{mid}/roles")
+async def api_member_roles(request: Request, mid: str):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    client = _bot_state.get("client")
+    if not client:
+        return JSONResponse({"error": "bot offline"}, 503)
+    guild = client.get_guild(int(gid))
+    if not guild:
+        return JSONResponse({"error": "guild not found"}, 404)
+    member = guild.get_member(int(mid))
+    if not member:
+        return JSONResponse({"error": "member not found"}, 404)
+    body = await request.json()
+    add_roles = body.get("add", [])
+    remove_roles = body.get("remove", [])
+    me = guild.me
+    for rid in add_roles:
+        role = guild.get_role(int(rid))
+        if role and role.position < me.top_role.position and role not in member.roles:
+            try:
+                await member.add_roles(role, reason=f"WebUI by {sess.get('username')}")
+            except Exception:
+                pass
+    for rid in remove_roles:
+        role = guild.get_role(int(rid))
+        if role and role.position < me.top_role.position and role in member.roles:
+            try:
+                await member.remove_roles(role, reason=f"WebUI by {sess.get('username')}")
+            except Exception:
+                pass
+    _audit(request, sess, gid, "role_manage", f"Modified roles for {mid}")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Audit helper
+# ---------------------------------------------------------------------------
+def _audit(request: Request, sess: dict, gid: str, action: str, detail: str = "") -> None:
+    try:
+        get_db().add_audit_log(
+            gid, sess.get("user_id", ""), sess.get("username", ""),
+            action, detail,
+        )
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

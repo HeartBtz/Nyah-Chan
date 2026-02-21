@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}XP & Niveaux — Nyah-Chan{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>XP & Niveaux</h1>
+    <p>Leaderboard et récompenses de rôles par niveau</p>
+</div>
+
+<div class="help-box">
+    <details>
+        <summary>💡 Système XP</summary>
+        <p>Les membres gagnent de l'XP en envoyant des messages. La formule de niveau est : <strong>5×N² + 50×N + 100</strong> XP pour atteindre le niveau N.</p>
+        <p>Les récompenses de rôles sont attribuées automatiquement lorsqu'un membre atteint le niveau requis. Configurez-les ci-dessous.</p>
+    </details>
+</div>
+
+<!-- Role rewards -->
+<div class="card">
+    <div class="card-header">
+        <h2>Récompenses de rôles</h2>
+        <button class="btn btn-primary btn-sm" onclick="addReward()">+ Ajouter</button>
+    </div>
+    <p class="help-section-note">Attribuez un rôle Discord automatiquement quand un membre atteint un certain niveau.</p>
+    <div id="reward-list"></div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="saveRewards()">Sauvegarder</button>
+    </div>
+</div>
+
+<!-- Leaderboard -->
+<div class="card">
+    <div class="card-header">
+        <h2>Leaderboard</h2>
+    </div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead><tr>
+                <th>#</th>
+                <th>Membre</th>
+                <th>Niveau</th>
+                <th>XP</th>
+            </tr></thead>
+            <tbody id="lb-body">
+                <tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.5rem">Chargement…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rewards = [];
+
+async function load() {
+    const [rRes, lbRes] = await Promise.all([
+        authFetch('/api/xp-rewards'),
+        authFetch('/api/xp-leaderboard'),
+    ]);
+    if (rRes) { rewards = await rRes.json(); renderRewards(); }
+    if (lbRes) { const lb = await lbRes.json(); renderLB(lb); }
+}
+
+function renderRewards() {
+    const el = document.getElementById('reward-list');
+    if (!rewards.length) {
+        el.innerHTML = '<div class="empty-state"><p>Aucune récompense configurée.</p></div>';
+        return;
+    }
+    el.innerHTML = rewards.map((r, i) => `
+        <div class="card" style="margin-bottom:0.75rem">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Niveau requis</label>
+                    <input type="number" value="${r.level||0}" min="1" onchange="rewards[${i}].level=+this.value">
+                </div>
+                <div class="form-group">
+                    <label>Role ID</label>
+                    <input type="text" value="${esc(r.role_id||'')}" onchange="rewards[${i}].role_id=this.value">
+                </div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="rewards.splice(${i},1);renderRewards()">Supprimer</button>
+        </div>
+    `).join('');
+}
+
+function renderLB(data) {
+    const tb = document.getElementById('lb-body');
+    if (!data.length) {
+        tb.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.5rem">Aucune donnée XP.</td></tr>';
+        return;
+    }
+    tb.innerHTML = data.map((u, i) => {
+        const lvl = calcLevel(u.xp);
+        return `<tr>
+            <td><span class="tag${i < 3 ? ' yellow' : ''}">${i + 1}</span></td>
+            <td>${esc(String(u.user_id))}</td>
+            <td>${lvl}</td>
+            <td>${u.xp.toLocaleString()}</td>
+        </tr>`;
+    }).join('');
+}
+
+function calcLevel(xp) {
+    let lvl = 0;
+    while (xp >= 5 * lvl * lvl + 50 * lvl + 100) {
+        xp -= 5 * lvl * lvl + 50 * lvl + 100;
+        lvl++;
+    }
+    return lvl;
+}
+
+function addReward() {
+    rewards.push({level: 5, role_id: ''});
+    renderRewards();
+}
+
+async function saveRewards() {
+    const res = await authFetch('/api/xp-rewards', {method:'POST', body: rewards});
+    if (res && res.ok) showToast('Récompenses sauvegardées !');
+    else showToast('Erreur lors de la sauvegarde', 'error');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
+</script>
+{% endblock %}

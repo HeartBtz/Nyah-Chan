@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Reaction Roles — Nyah-Chan{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Reaction Roles</h1>
+    <p>Attribution automatique de rôles par réaction emoji</p>
+</div>
+
+<div class="help-box">
+    <details open>
+        <summary>💡 Comment fonctionnent les reaction roles ?</summary>
+        <p>Quand un membre réagit avec un emoji spécifique sur un message donné, il reçoit automatiquement un rôle Discord. Retirer la réaction retire le rôle.</p>
+        <ul>
+            <li><strong>Message ID</strong> — L'ID du message auquel les réactions sont reliées. (Mode développeur → clic droit → "Copier l'identifiant").</li>
+            <li><strong>Channel ID</strong> — L'ID du salon contenant le message.</li>
+            <li><strong>Emoji</strong> — L'emoji Unicode (ex: ✅) ou le nom d'un emoji custom (ex: &lt;:nom:id&gt;).</li>
+            <li><strong>Role ID</strong> — L'ID du rôle à attribuer.</li>
+        </ul>
+    </details>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Liste des reaction roles</h2>
+        <button class="btn btn-primary btn-sm" onclick="addRR()">+ Ajouter</button>
+    </div>
+    <div id="rr-list"></div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="saveRR()">Sauvegarder</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let items = [];
+
+async function load() {
+    const res = await authFetch('/api/reaction-roles');
+    if (!res) return;
+    items = await res.json();
+    render();
+}
+
+function render() {
+    const el = document.getElementById('rr-list');
+    if (!items.length) {
+        el.innerHTML = '<div class="empty-state"><p>Aucun reaction role configuré.</p></div>';
+        return;
+    }
+    el.innerHTML = items.map((r, i) => `
+        <div class="card" style="margin-bottom:0.75rem">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Message ID</label>
+                    <input type="text" value="${esc(r.message_id||'')}" onchange="items[${i}].message_id=this.value">
+                </div>
+                <div class="form-group">
+                    <label>Channel ID</label>
+                    <input type="text" value="${esc(r.channel_id||'')}" onchange="items[${i}].channel_id=this.value">
+                </div>
+                <div class="form-group">
+                    <label>Emoji</label>
+                    <input type="text" value="${esc(r.emoji||'')}" onchange="items[${i}].emoji=this.value" placeholder="✅">
+                </div>
+                <div class="form-group">
+                    <label>Role ID</label>
+                    <input type="text" value="${esc(r.role_id||'')}" onchange="items[${i}].role_id=this.value">
+                </div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="items.splice(${i},1);render()">Supprimer</button>
+        </div>
+    `).join('');
+}
+
+function addRR() {
+    items.push({message_id:'', channel_id:'', emoji:'', role_id:''});
+    render();
+}
+
+async function saveRR() {
+    const res = await authFetch('/api/reaction-roles', {method:'POST', body: items});
+    if (res && res.ok) showToast('Reaction roles sauvegardés !');
+    else showToast('Erreur lors de la sauvegarde', 'error');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
+</script>
+{% endblock %}

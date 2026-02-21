@@ -102,15 +102,35 @@ async def async_main() -> None:
     from .features import keyword_responses  # noqa: F401
     from .features import ollama_qna  # noqa: F401
     from .features import role_triggers  # noqa: F401
+    from .features import antispam  # noqa: F401
+    from .features import antilink  # noqa: F401
+    from .features import custom_commands  # noqa: F401
+    from .features import xp_system  # noqa: F401
     from .features.registry import setup_all
     from .events.ready import setup_ready_event
     from .events.message_create import setup_message_event
     from .events.member_join import setup_member_events
 
+    # Non-registry features (event-based)
+    from .features.antiraid import setup_antiraid
+    from .features.starboard import setup_starboard
+    from .features.reaction_roles import setup_reaction_roles
+    from .features.audit_logs import setup_audit_logs
+    from .features.tickets import setup_tickets
+
     setup_ready_event(client)
     setup_message_event(client)
     setup_member_events(client)
     setup_all(client)
+    setup_antiraid(client)
+    setup_starboard(client)
+    setup_reaction_roles(client)
+    setup_audit_logs(client)
+    setup_tickets(client)
+
+    # Background task loop (tempbans, reminders, scheduled msgs, giveaways)
+    from .tasks import task_loop
+    asyncio.ensure_future(task_loop(client))
 
     # Web panel callbacks
     from .web import set_bot_state
