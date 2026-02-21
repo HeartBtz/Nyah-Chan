@@ -22,9 +22,11 @@ async def ensure_role(guild: discord.Guild, role_name: str) -> Optional[discord.
         )
         me = guild.me
         if me and me.top_role and me.top_role.position > 1:
-            target_pos = me.top_role.position - 1
             try:
-                await role.edit(position=target_pos, reason="Auto-position under bot role")
+                await role.edit(
+                    position=me.top_role.position - 1,
+                    reason="Auto-position under bot role",
+                )
             except Exception:
                 pass
         return role
@@ -33,23 +35,22 @@ async def ensure_role(guild: discord.Guild, role_name: str) -> Optional[discord.
         return None
 
 
-def word_boundary_match(trigger: str, text: str) -> bool:
+def word_match(trigger: str, text: str) -> bool:
     """Check if *trigger* appears as a whole word in *text* (case-insensitive)."""
     return bool(re.search(r"\b" + re.escape(trigger) + r"\b", text, re.IGNORECASE))
 
 
-def calculate_uptime(started_at_iso: str) -> str:
+def format_uptime(started_at_iso: str) -> str:
     """Return a human-readable uptime string from an ISO-8601 timestamp."""
     if not started_at_iso:
         return "N/A"
     try:
         started = datetime.fromisoformat(started_at_iso)
-        delta = datetime.now(timezone.utc) - started
-        total = int(delta.total_seconds())
-        days, remainder = divmod(total, 86400)
-        hours, remainder = divmod(remainder, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        parts = []
+        total = int((datetime.now(timezone.utc) - started).total_seconds())
+        days, rem = divmod(total, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, seconds = divmod(rem, 60)
+        parts: list[str] = []
         if days:
             parts.append(f"{days}j")
         parts.append(f"{hours}h {minutes}m {seconds}s")

@@ -1,193 +1,80 @@
 {% extends "base.html" %}
+{% block title %}Grant — Nyah-Chan{% endblock %}
 {% block content %}
 <div class="page-header">
     <h1>Grant Commands</h1>
-    <p>Commandes spéciales qui attribuent des rôles avec un préfixe (ex: !vip).</p>
+    <p>Commandes d'attribution de rôles personnalisées</p>
 </div>
 
-<!-- Editor -->
 <div class="card">
     <div class="card-header">
-        <h2>✏️ Éditer une commande</h2>
+        <h2>Commandes grant</h2>
+        <button class="btn btn-primary btn-sm" onclick="addGrant()">+ Ajouter</button>
     </div>
-    <form id="grant-form" onsubmit="saveCommand(event)">
-        <div class="form-row">
-            <div class="form-group">
-                <label for="name">Nom de la commande (sans préfixe)</label>
-                <input type="text" id="name" placeholder="vip">
-            </div>
-            <div class="form-group">
-                <label for="role_name">Nom du rôle</label>
-                <input type="text" id="role_name" placeholder="VIP">
-            </div>
-        </div>
-        <div class="form-group">
-            <label for="allowed_user_ids">IDs utilisateurs autorisés (séparés par des virgules)</label>
-            <input type="text" id="allowed_user_ids" placeholder="123456789012345678, 987654321098765432">
-        </div>
-        <div class="form-group">
-            <label for="gif_path">Chemin GIF (optionnel)</label>
-            <input type="text" id="gif_path" placeholder="pokeball-fable.gif">
-        </div>
-
-        <div class="btn-group">
-            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
-            <button type="button" class="btn btn-secondary" onclick="resetForm()">Réinitialiser</button>
-            <button type="button" class="btn btn-danger" onclick="deleteCurrentCommand()">🗑️ Supprimer</button>
-        </div>
-    </form>
-</div>
-
-<!-- List -->
-<div class="card">
-    <div class="card-header">
-        <h2>📋 Liste des commandes</h2>
-        <span class="badge" id="commands-count">0</span>
-    </div>
-    <table>
-        <thead>
-        <tr>
-            <th>Nom</th>
-            <th>Rôle</th>
-            <th>IDs autorisés</th>
-            <th>GIF</th>
-            <th>Actions</th>
-        </tr>
-        </thead>
-        <tbody id="commands-table-body"></tbody>
-    </table>
-    <div id="commands-empty" class="empty-state hidden">
-        <div class="icon">🎁</div>
-        <p>Aucune commande configurée. Utilisez le formulaire ci-dessus pour en créer une.</p>
+    <div id="grant-list"></div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="saveGrants()">Sauvegarder</button>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-let commandsData = [];
-let currentIndex = null;
+let grants = [];
 
-function refreshTable() {
-    const tbody = document.getElementById('commands-table-body');
-    const emptyState = document.getElementById('commands-empty');
-    const countBadge = document.getElementById('commands-count');
-    tbody.innerHTML = '';
-    countBadge.textContent = commandsData.length;
+async function load() {
+    const res = await authFetch('/api/grant');
+    if (!res) return;
+    grants = await res.json();
+    render();
+}
 
-    if (!commandsData.length) {
-        emptyState.classList.remove('hidden');
+function render() {
+    const el = document.getElementById('grant-list');
+    if (!grants.length) {
+        el.innerHTML = '<div class="empty-state"><p>Aucune commande grant configurée.</p></div>';
         return;
     }
-    emptyState.classList.add('hidden');
-
-    commandsData.forEach((c, idx) => {
-        const tr = document.createElement('tr');
-        const ids = (c.allowed_user_ids || []).map(id => `<span class="tag">${escapeHtml(id)}</span>`).join(' ');
-        tr.innerHTML = `
-            <td><strong>!${escapeHtml(c.name)}</strong></td>
-            <td>${escapeHtml(c.role_name)}</td>
-            <td>${ids || '<span class="text-muted">Aucun</span>'}</td>
-            <td>${c.gif_path ? escapeHtml(c.gif_path) : '<span class="text-muted">—</span>'}</td>
-            <td>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="loadFromRow(${idx})">Éditer</button>
-                <button type="button" class="btn btn-danger btn-sm" onclick="deleteCommand(${idx})">🗑️</button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
+    el.innerHTML = grants.map((g, i) => `
+        <div class="card" style="margin-bottom:0.75rem">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nom de la commande</label>
+                    <input type="text" value="${esc(g.name||'')}" onchange="grants[${i}].name=this.value">
+                </div>
+                <div class="form-group">
+                    <label>Rôle à attribuer</label>
+                    <input type="text" value="${esc(g.role_name||'')}" onchange="grants[${i}].role_name=this.value">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>IDs autorisés (virgule séparés)</label>
+                    <input type="text" value="${(g.allowed_user_ids||[]).join(', ')}"
+                        onchange="grants[${i}].allowed_user_ids=this.value.split(',').map(s=>s.trim()).filter(Boolean)">
+                </div>
+                <div class="form-group">
+                    <label>GIF (chemin ou URL)</label>
+                    <input type="text" value="${esc(g.gif_path||'')}" onchange="grants[${i}].gif_path=this.value">
+                </div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="grants.splice(${i},1);render()">Supprimer</button>
+        </div>
+    `).join('');
 }
 
-function loadFromRow(index) {
-    const c = commandsData[index];
-    currentIndex = index;
-    document.getElementById('name').value = c.name || '';
-    document.getElementById('role_name').value = c.role_name || '';
-    document.getElementById('allowed_user_ids').value = (c.allowed_user_ids || []).join(', ');
-    document.getElementById('gif_path').value = c.gif_path || '';
-    showToast('Commande chargée pour édition', 'info');
+function addGrant() {
+    grants.push({name:'',role_name:'',allowed_user_ids:[],gif_path:''});
+    render();
 }
 
-function resetForm() {
-    currentIndex = null;
-    document.getElementById('grant-form').reset();
-    showToast('Formulaire réinitialisé', 'info');
+async function saveGrants() {
+    const res = await authFetch('/api/grant', {method:'POST', body: grants});
+    if (res && res.ok) showToast('Grant commands sauvegardées !');
+    else showToast('Erreur', 'error');
 }
 
-function deleteCurrentCommand() {
-    if (currentIndex === null) {
-        showToast('Aucune commande sélectionnée', 'error');
-        return;
-    }
-    if (!confirm('Supprimer cette commande ?')) return;
-    commandsData.splice(currentIndex, 1);
-    currentIndex = null;
-    document.getElementById('grant-form').reset();
-    persistCommands('Commande supprimée');
-}
-
-async function deleteCommand(index) {
-    if (!confirm('Supprimer cette commande ?')) return;
-    commandsData.splice(index, 1);
-    if (currentIndex === index) {
-        currentIndex = null;
-        document.getElementById('grant-form').reset();
-    }
-    await persistCommands('Commande supprimée');
-}
-
-async function saveCommand(event) {
-    event.preventDefault();
-    const name = document.getElementById('name').value.trim().toLowerCase();
-    const role_name = document.getElementById('role_name').value.trim();
-    const allowed_raw = document.getElementById('allowed_user_ids').value;
-    const gif_path = document.getElementById('gif_path').value || null;
-
-    if (!name || !role_name) {
-        showToast('Nom et rôle sont obligatoires', 'error');
-        return;
-    }
-
-    const allowed_user_ids = allowed_raw.split(',').map(x => x.trim()).filter(Boolean);
-    const entry = { name, role_name, allowed_user_ids, gif_path };
-
-    if (currentIndex === null) {
-        commandsData.push(entry);
-    } else {
-        commandsData[currentIndex] = entry;
-    }
-
-    await persistCommands('Commande sauvegardée avec succès');
-}
-
-async function persistCommands(successMessage) {
-    try {
-        const resp = await fetch('/api/grant', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ commands: commandsData }),
-        });
-        const data = await resp.json();
-        if (!data.ok) {
-            showToast('Erreur: ' + (data.error || 'inconnue'), 'error');
-            return;
-        }
-        refreshTable();
-        showToast(successMessage, 'success');
-    } catch (e) {
-        showToast('Erreur: ' + e, 'error');
-    }
-}
-
-async function loadInitial() {
-    try {
-        const resp = await fetch('/api/grant');
-        const data = await resp.json();
-        commandsData = data.commands || [];
-        refreshTable();
-    } catch (e) {
-        showToast('Erreur de chargement: ' + e, 'error');
-    }
-}
-
-loadInitial();
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
 </script>
 {% endblock %}

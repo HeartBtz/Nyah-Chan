@@ -26,12 +26,6 @@ function Write-Banner {
 "@ -ForegroundColor Cyan
 }
 
-function New-Secret {
-    $bytes = New-Object byte[] 36
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    return [Convert]::ToBase64String($bytes).Replace('+','-').Replace('/','_').TrimEnd('=').Substring(0, 48)
-}
-
 Write-Banner
 
 # --- Verifications ---
@@ -130,14 +124,17 @@ if ([string]::IsNullOrWhiteSpace($discordToken)) {
 }
 
 Write-Host ""
-Write-Host "--- Prefixe des commandes ---" -ForegroundColor White
+Write-Host "--- Discord OAuth2 (Panel Web) ---" -ForegroundColor White
+Write-Host "  Configure OAuth2 sur https://discord.com/developers/applications"
+Write-Host "  Redirect URI: http://localhost:8000/auth/callback"
+Write-Host ""
 Write-Ask
-$prefix = Read-Host "Prefixe (defaut: !)"
-if ([string]::IsNullOrWhiteSpace($prefix)) { $prefix = "!" }
+$clientId = Read-Host "Client ID de l'application Discord"
+Write-Ask
+$clientSecret = Read-Host "Client Secret de l'application Discord"
 
 Write-Host ""
-Write-Host "--- Panel web admin ---" -ForegroundColor White
-$webSecret = New-Secret
+Write-Host "--- Panel web ---" -ForegroundColor White
 Write-Ask
 $webPort = Read-Host "Port du panel web (defaut: 8000)"
 if ([string]::IsNullOrWhiteSpace($webPort)) { $webPort = "8000" }
@@ -146,28 +143,10 @@ Write-Ask
 $webHost = Read-Host "Hote du panel web (defaut: 0.0.0.0)"
 if ([string]::IsNullOrWhiteSpace($webHost)) { $webHost = "0.0.0.0" }
 
-Write-Host ""
-Write-Host "--- Moderation ---" -ForegroundColor White
+$defaultRedirect = "http://localhost:${webPort}/auth/callback"
 Write-Ask
-$modLogChannelId = Read-Host "ID du channel de logs de moderation (vide = desactive)"
-
-Write-Host ""
-Write-Host "--- Messages de bienvenue ---" -ForegroundColor White
-Write-Ask
-$welcomeInput = Read-Host "Activer les messages de bienvenue ? (o/N)"
-$welcomeEnabled = "0"
-$welcomeChannelId = ""
-$welcomeMessage = "Bienvenue {mention} sur **{server}** ! "
-if ($welcomeInput -match "^[oOyY]$") {
-    $welcomeEnabled = "1"
-    Write-Ask
-    $welcomeChannelId = Read-Host "ID du channel de bienvenue"
-    Write-Ask
-    $welcomeMsgInput = Read-Host "Message (variables: {mention}, {user}, {username}, {server}, {member_count})"
-    if (-not [string]::IsNullOrWhiteSpace($welcomeMsgInput)) {
-        $welcomeMessage = $welcomeMsgInput
-    }
-}
+$redirectUri = Read-Host "Redirect URI OAuth2 (defaut: $defaultRedirect)"
+if ([string]::IsNullOrWhiteSpace($redirectUri)) { $redirectUri = $defaultRedirect }
 
 # Write .env
 $envContent = @"
@@ -177,43 +156,20 @@ $envContent = @"
 
 # --- Discord ---
 DISCORD_TOKEN=$discordToken
-PREFIX=$prefix
 USE_MEMBERS_INTENT=1
 LOG_LEVEL=INFO
 
-# --- Web Admin Panel ---
-WEB_SECRET_KEY=$webSecret
+# --- Discord OAuth2 (Web Panel) ---
+DISCORD_CLIENT_ID=$clientId
+DISCORD_CLIENT_SECRET=$clientSecret
+DISCORD_REDIRECT_URI=$redirectUri
+
+# --- Web Panel ---
 NYAH_WEB_HOST=$webHost
 NYAH_WEB_PORT=$webPort
 
-# --- Reactions automatiques ---
-REACTIONS_ENABLED=1
-
-# --- Config files ---
-ROLE_TRIGGERS_CONFIG=role_triggers.json
-GRANT_COMMANDS_CONFIG=grant_commands.json
-KEYWORD_RESPONSES_CONFIG=keyword_responses.json
-
-# --- Ollama (Q&A) ---
-OLLAMA_ENABLED=0
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
-OLLAMA_TIMEOUT=60
-
-# --- Moderation ---
-MOD_LOG_CHANNEL_ID=$modLogChannelId
-MOD_WARNINGS_PATH=moderation_warnings.json
-
-# --- Welcome messages ---
-WELCOME_ENABLED=$welcomeEnabled
-WELCOME_CHANNEL_ID=$welcomeChannelId
-WELCOME_MESSAGE=$welcomeMessage
-
-# --- Auto-moderation ---
-AUTOMOD_ENABLED=0
-AUTOMOD_BAD_WORDS=
-AUTOMOD_MAX_MENTIONS=5
-AUTOMOD_MAX_CAPS_PERCENT=80
+# --- Database ---
+DATABASE_PATH=nyahchan.db
 "@
 
 Set-Content -Path ".env" -Value $envContent -Encoding UTF8
@@ -230,12 +186,12 @@ Write-Host "============================================" -ForegroundColor White
 Write-Host "   Installation terminee avec succes !" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor White
 Write-Host ""
-Write-Host "  Mot de passe du panel web: " -ForegroundColor Cyan -NoNewline
-Write-Host "$webSecret" -ForegroundColor White
-Write-Host "  Panel web:                 " -ForegroundColor Cyan -NoNewline
+Write-Host "  Panel web:        " -ForegroundColor Cyan -NoNewline
 Write-Host "http://${webHost}:${webPort}"
-Write-Host "  Prefixe:                   " -ForegroundColor Cyan -NoNewline
-Write-Host "$prefix"
+Write-Host "  Redirect URI:     " -ForegroundColor Cyan -NoNewline
+Write-Host "$redirectUri"
+Write-Host "  Authentification: " -ForegroundColor Cyan -NoNewline
+Write-Host "Discord OAuth2"
 Write-Host ""
 Write-Host "  Commandes de lancement:" -ForegroundColor White
 Write-Host "    Bot seul:        " -NoNewline
@@ -243,5 +199,5 @@ Write-Host ".\.venv\Scripts\Activate.ps1; python run_bot.py" -ForegroundColor Gr
 Write-Host "    Bot + panel web: " -NoNewline
 Write-Host ".\.venv\Scripts\Activate.ps1; python run_bot_with_web.py" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Note ton mot de passe du panel web ci-dessus !" -ForegroundColor Yellow
+Write-Host "  Assure-toi d'avoir configure le Redirect URI sur le Developer Portal !" -ForegroundColor Yellow
 Write-Host ""

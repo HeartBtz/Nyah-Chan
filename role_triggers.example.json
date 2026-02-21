@@ -1,6 +1,0 @@
-{
-  "triggers": [
-    { "trigger": "patate", "role_name": "Patate" },
-    { "trigger": "carotte", "role_name": "Carotte", "remove_trigger": "j'enlève carotte" }
-  ]
-}

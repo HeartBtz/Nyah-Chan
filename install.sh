@@ -30,13 +30,6 @@ warn()    { echo -e "${YELLOW}[!]${NC} $*"; }
 error()   { echo -e "${RED}[✗]${NC} $*"; }
 ask()     { echo -en "${CYAN}[?]${NC} $* "; }
 
-gen_secret() {
-    # Génère une clé aléatoire de 48 caractères (base64 URL-safe)
-    python3 -c "import secrets; print(secrets.token_urlsafe(36))" 2>/dev/null \
-        || openssl rand -base64 36 2>/dev/null \
-        || head -c 36 /dev/urandom | base64 | tr -d '=/+' | head -c 48
-}
-
 banner
 
 # --- Vérifications préalables ---
@@ -134,14 +127,17 @@ if [ -z "$DISCORD_TOKEN" ]; then
 fi
 
 echo ""
-echo -e "${BOLD}--- Préfixe des commandes ---${NC}"
-ask "Préfixe (défaut: !):"
-read -r PREFIX
-PREFIX="${PREFIX:-!}"
+echo -e "${BOLD}--- Discord OAuth2 (Panel Web) ---${NC}"
+echo -e "  Configure OAuth2 sur https://discord.com/developers/applications"
+echo -e "  Redirect URI: http://localhost:8000/auth/callback"
+echo ""
+ask "Client ID de l'application Discord:"
+read -r DISCORD_CLIENT_ID
+ask "Client Secret de l'application Discord:"
+read -r DISCORD_CLIENT_SECRET
 
 echo ""
-echo -e "${BOLD}--- Panel web admin ---${NC}"
-WEB_SECRET=$(gen_secret)
+echo -e "${BOLD}--- Panel web ---${NC}"
 ask "Port du panel web (défaut: 8000):"
 read -r WEB_PORT
 WEB_PORT="${WEB_PORT:-8000}"
@@ -150,28 +146,10 @@ ask "Hôte du panel web (défaut: 0.0.0.0):"
 read -r WEB_HOST
 WEB_HOST="${WEB_HOST:-0.0.0.0}"
 
-echo ""
-echo -e "${BOLD}--- Modération ---${NC}"
-ask "ID du channel de logs de modération (laisser vide pour désactiver):"
-read -r MOD_LOG_CHANNEL_ID
-
-echo ""
-echo -e "${BOLD}--- Messages de bienvenue ---${NC}"
-ask "Activer les messages de bienvenue ? (o/N):"
-read -r WELCOME_ENABLED_INPUT
-WELCOME_ENABLED=0
-WELCOME_CHANNEL_ID=""
-WELCOME_MESSAGE="Bienvenue {mention} sur **{server}** ! 🎉"
-if [[ "$WELCOME_ENABLED_INPUT" =~ ^[oOyY]$ ]]; then
-    WELCOME_ENABLED=1
-    ask "ID du channel de bienvenue:"
-    read -r WELCOME_CHANNEL_ID
-    ask "Message (variables: {mention}, {user}, {username}, {server}, {member_count}):"
-    read -r WELCOME_MSG_INPUT
-    if [ -n "$WELCOME_MSG_INPUT" ]; then
-        WELCOME_MESSAGE="$WELCOME_MSG_INPUT"
-    fi
-fi
+REDIRECT_URI="http://localhost:${WEB_PORT}/auth/callback"
+ask "Redirect URI OAuth2 (défaut: ${REDIRECT_URI}):"
+read -r REDIRECT_INPUT
+REDIRECT_URI="${REDIRECT_INPUT:-$REDIRECT_URI}"
 
 # Écriture du .env
 cat > .env << ENVEOF
@@ -181,43 +159,20 @@ cat > .env << ENVEOF
 
 # --- Discord ---
 DISCORD_TOKEN=${DISCORD_TOKEN}
-PREFIX=${PREFIX}
 USE_MEMBERS_INTENT=1
 LOG_LEVEL=INFO
 
-# --- Web Admin Panel ---
-WEB_SECRET_KEY=${WEB_SECRET}
+# --- Discord OAuth2 (Web Panel) ---
+DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+DISCORD_REDIRECT_URI=${REDIRECT_URI}
+
+# --- Web Panel ---
 NYAH_WEB_HOST=${WEB_HOST}
 NYAH_WEB_PORT=${WEB_PORT}
 
-# --- Réactions automatiques ---
-REACTIONS_ENABLED=1
-
-# --- Config files ---
-ROLE_TRIGGERS_CONFIG=role_triggers.json
-GRANT_COMMANDS_CONFIG=grant_commands.json
-KEYWORD_RESPONSES_CONFIG=keyword_responses.json
-
-# --- Ollama (Q&A) ---
-OLLAMA_ENABLED=0
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
-OLLAMA_TIMEOUT=60
-
-# --- Modération ---
-MOD_LOG_CHANNEL_ID=${MOD_LOG_CHANNEL_ID}
-MOD_WARNINGS_PATH=moderation_warnings.json
-
-# --- Welcome messages ---
-WELCOME_ENABLED=${WELCOME_ENABLED}
-WELCOME_CHANNEL_ID=${WELCOME_CHANNEL_ID}
-WELCOME_MESSAGE=${WELCOME_MESSAGE}
-
-# --- Auto-moderation ---
-AUTOMOD_ENABLED=0
-AUTOMOD_BAD_WORDS=
-AUTOMOD_MAX_MENTIONS=5
-AUTOMOD_MAX_CAPS_PERCENT=80
+# --- Database ---
+DATABASE_PATH=nyahchan.db
 ENVEOF
 
 info "Fichier .env généré"
@@ -233,13 +188,13 @@ echo -e "${BOLD}============================================${NC}"
 echo -e "${GREEN}   Installation terminée avec succès !${NC}"
 echo -e "${BOLD}============================================${NC}"
 echo ""
-echo -e "  ${CYAN}Mot de passe du panel web:${NC} ${BOLD}${WEB_SECRET}${NC}"
-echo -e "  ${CYAN}Panel web:${NC}                http://${WEB_HOST}:${WEB_PORT}"
-echo -e "  ${CYAN}Préfixe:${NC}                  ${PREFIX}"
+echo -e "  ${CYAN}Panel web:${NC}       http://${WEB_HOST}:${WEB_PORT}"
+echo -e "  ${CYAN}Redirect URI:${NC}    ${REDIRECT_URI}"
+echo -e "  ${CYAN}Authentification:${NC} Discord OAuth2"
 echo ""
 echo -e "  ${BOLD}Commandes de lancement:${NC}"
 echo -e "    Bot seul:         ${GREEN}source .venv/bin/activate && python run_bot.py${NC}"
 echo -e "    Bot + panel web:  ${GREEN}source .venv/bin/activate && python run_bot_with_web.py${NC}"
 echo ""
-echo -e "  ${YELLOW}⚠  Note ton mot de passe du panel web ci-dessus — il ne sera plus affiché !${NC}"
+echo -e "  ${YELLOW}⚠  Assure-toi d'avoir configuré le Redirect URI sur le Developer Portal !${NC}"
 echo ""

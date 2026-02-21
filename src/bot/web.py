@@ -1,353 +1,524 @@
+"""Web administration panel — Discord OAuth2, guild-aware configuration."""
 from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import secrets
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote, urlencode
 
-from fastapi import Cookie, FastAPI, HTTPException, Request
+import aiohttp
+import uvicorn
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .config.grant_commands_store import load_grant_commands, save_grant_commands
-from .config.keyword_responses_store import load_keyword_responses, save_keyword_responses
-from .config.role_triggers_store import load_role_triggers, save_role_triggers
-from .moderation_store import WarningStore
-from .utils import calculate_uptime
+from .database import get_db
 
 logger = logging.getLogger("nyahchan.web")
 
-_reload_callback = None
-_bot_state: Dict[str, Any] = {}
-
-# Simple session store (in-memory)
-_sessions: Dict[str, float] = {}  # token -> expiry timestamp
-SESSION_DURATION = 24 * 3600  # 24h
+# ---------------------------------------------------------------------------
+# State injected by main.py
+# ---------------------------------------------------------------------------
+_bot_state: dict = {}
 
 
-def set_reload_callback(callback) -> None:
-    """Register a callback for hot-reloading bot features."""
-    global _reload_callback
-    _reload_callback = callback
-
-
-def set_bot_state(state: Dict[str, Any]) -> None:
-    """Register the bot state dict for dashboard access."""
+def set_bot_state(state: dict) -> None:
     global _bot_state
     _bot_state = state
 
 
-def _get_secret_key() -> str:
-    key = os.getenv("WEB_SECRET_KEY", "").strip()
-    if not key:
-        logger.error("WEB_SECRET_KEY non défini dans .env — l'admin panel ne sera pas accessible.")
-        return secrets.token_urlsafe(64)  # Random unreachable key as safe fallback
-    return key
+# ---------------------------------------------------------------------------
+# In-memory sessions  {token: {user_id, username, avatar, guilds, expires}}
+# ---------------------------------------------------------------------------
+_sessions: Dict[str, Dict[str, Any]] = {}
+SESSION_TTL = 86400  # 24h
+
+DISCORD_API = "https://discord.com/api/v10"
+DISCORD_CDN = "https://cdn.discordapp.com"
 
 
-def _create_session() -> str:
-    """Create a new session token."""
-    token = secrets.token_urlsafe(32)
-    _sessions[token] = time.time() + SESSION_DURATION
-    # Clean expired sessions
-    now = time.time()
-    expired = [k for k, v in _sessions.items() if v < now]
-    for k in expired:
-        del _sessions[k]
-    return token
-
-
-def _validate_session(token: Optional[str]) -> bool:
-    """Check if a session token is valid."""
+def _session_get(request: Request) -> Optional[Dict[str, Any]]:
+    token = request.cookies.get("session")
     if not token:
-        return False
-    expiry = _sessions.get(token)
-    if expiry is None or expiry < time.time():
+        return None
+    sess = _sessions.get(token)
+    if not sess or sess.get("expires", 0) < time.time():
         _sessions.pop(token, None)
-        return False
-    return True
+        return None
+    return sess
 
 
-# --- FastAPI App ---
-app = FastAPI(title="Nyah-Chan Admin", docs_url=None, redoc_url=None)
-
-# Static files
-static_dir = Path(__file__).resolve().parent.parent.parent / "static"
-static_dir.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-# Templates
-templates_dir = Path(__file__).resolve().parent.parent.parent / "templates"
-templates = Jinja2Templates(directory=str(templates_dir))
+def _require_auth(request: Request):
+    sess = _session_get(request)
+    if not sess:
+        return None
+    return sess
 
 
-# --- Auth middleware ---
-def _require_auth(session_token: Optional[str]) -> None:
-    """Raise redirect if not authenticated."""
-    if not _validate_session(session_token):
-        raise HTTPException(status_code=303, headers={"Location": "/login"})
+def _admin_guilds(sess: dict) -> List[dict]:
+    """Guilds where user has ADMINISTRATOR and bot is present."""
+    client = _bot_state.get("client")
+    bot_guild_ids = {str(g.id) for g in client.guilds} if client else set()
+    result = []
+    for g in sess.get("guilds", []):
+        perms = g.get("permissions", 0)
+        if isinstance(perms, str):
+            perms = int(perms)
+        if not (perms & 0x8):
+            continue
+        if g["id"] not in bot_guild_ids:
+            continue
+        result.append(g)
+    return result
 
 
-# --- Login ---
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = "") -> Any:
-    return templates.TemplateResponse(
-        "login.html", {"request": request, "error": error}
-    )
+def _selected_guild(request: Request, admin_guilds: list) -> Optional[str]:
+    """Resolve selected guild from query / cookie, fallback to first admin guild."""
+    gid = request.query_params.get("guild_id") or request.cookies.get("guild_id")
+    ids = {g["id"] for g in admin_guilds}
+    if gid and gid in ids:
+        return gid
+    return admin_guilds[0]["id"] if admin_guilds else None
 
 
-@app.post("/login")
-async def login_submit(request: Request) -> Any:
-    form = await request.form()
-    password = str(form.get("password", ""))
-    secret = _get_secret_key()
-
-    if hmac.compare_digest(password, secret):
-        token = _create_session()
-        response = RedirectResponse(url="/ui/dashboard", status_code=303)
-        response.set_cookie(
-            key="session",
-            value=token,
-            httponly=True,
-            samesite="lax",
-            max_age=SESSION_DURATION,
-        )
-        logger.info("Web admin login successful from %s", request.client.host if request.client else "unknown")
-        return response
-    else:
-        logger.warning("Failed login attempt from %s", request.client.host if request.client else "unknown")
-        return RedirectResponse(url="/login?error=Mot+de+passe+incorrect", status_code=303)
+def _avatar_url(user: dict) -> str:
+    uid = user.get("id", "0")
+    av = user.get("avatar")
+    if av:
+        ext = "gif" if av.startswith("a_") else "png"
+        return f"{DISCORD_CDN}/avatars/{uid}/{av}.{ext}?size=64"
+    disc = int(user.get("discriminator") or "0")
+    idx = (int(uid) >> 22) % 6 if disc == 0 else disc % 5
+    return f"{DISCORD_CDN}/embed/avatars/{idx}.png"
 
 
-@app.get("/logout")
-async def logout(session: Optional[str] = Cookie(None)) -> Any:
-    if session:
-        _sessions.pop(session, None)
-    response = RedirectResponse(url="/login", status_code=303)
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+app = FastAPI(docs_url=None, redoc_url=None)
+
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+app.mount("/static", StaticFiles(directory=os.path.join(_root, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(_root, "templates"))
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
+@app.get("/auth/login")
+async def auth_login(request: Request):
+    """Show login page or redirect to Discord OAuth2."""
+    # If already logged in, go to dashboard
+    if _session_get(request):
+        return RedirectResponse("/ui/dashboard")
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.get("/auth/discord")
+async def auth_discord(request: Request):
+    """Redirect to Discord OAuth2 authorization."""
+    client_id = os.getenv("DISCORD_CLIENT_ID", "")
+    redirect_uri = os.getenv("DISCORD_REDIRECT_URI", "http://localhost:8000/auth/callback")
+    if not client_id:
+        return JSONResponse({"error": "DISCORD_CLIENT_ID not set"}, 500)
+    params = urlencode({
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "identify guilds",
+    })
+    return RedirectResponse(f"https://discord.com/oauth2/authorize?{params}")
+
+
+@app.get("/auth/callback")
+async def auth_callback(request: Request, code: str = Query("")):
+    if not code:
+        return RedirectResponse("/auth/login")
+    client_id = os.getenv("DISCORD_CLIENT_ID", "")
+    client_secret = os.getenv("DISCORD_CLIENT_SECRET", "")
+    redirect_uri = os.getenv("DISCORD_REDIRECT_URI", "http://localhost:8000/auth/callback")
+    # Exchange code for token
+    async with aiohttp.ClientSession() as http:
+        async with http.post(
+            f"{DISCORD_API}/oauth2/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        ) as resp:
+            if resp.status != 200:
+                logger.error("OAuth token exchange failed: %s", await resp.text())
+                return RedirectResponse("/auth/login")
+            token_data = await resp.json()
+
+        access_token = token_data.get("access_token", "")
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        async with http.get(f"{DISCORD_API}/users/@me", headers=headers) as resp:
+            if resp.status != 200:
+                return RedirectResponse("/auth/login")
+            user = await resp.json()
+
+        async with http.get(f"{DISCORD_API}/users/@me/guilds", headers=headers) as resp:
+            if resp.status != 200:
+                guilds = []
+            else:
+                guilds = await resp.json()
+
+    session_token = secrets.token_urlsafe(48)
+    _sessions[session_token] = {
+        "user_id": user.get("id"),
+        "username": user.get("username"),
+        "global_name": user.get("global_name"),
+        "discriminator": user.get("discriminator", "0"),
+        "avatar": user.get("avatar"),
+        "guilds": guilds,
+        "expires": time.time() + SESSION_TTL,
+    }
+    response = RedirectResponse("/ui/dashboard", status_code=302)
+    response.set_cookie("session", session_token, httponly=True, max_age=SESSION_TTL, samesite="lax")
+    return response
+
+
+@app.get("/auth/logout")
+async def auth_logout(request: Request):
+    token = request.cookies.get("session")
+    if token:
+        _sessions.pop(token, None)
+    response = RedirectResponse("/auth/login")
     response.delete_cookie("session")
     return response
 
 
-# --- Dashboard ---
-@app.get("/", response_class=HTMLResponse)
-async def index(session: Optional[str] = Cookie(None)) -> Any:
-    if _validate_session(session):
-        return RedirectResponse(url="/ui/dashboard", status_code=302)
-    return RedirectResponse(url="/login", status_code=302)
+# ---------------------------------------------------------------------------
+# Redirect root
+# ---------------------------------------------------------------------------
+@app.get("/")
+async def root(request: Request):
+    sess = _session_get(request)
+    if sess:
+        return RedirectResponse("/ui/dashboard")
+    return RedirectResponse("/auth/login")
 
 
-@app.get("/ui/dashboard", response_class=HTMLResponse)
-async def ui_dashboard(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-
-    # Gather stats
-    keywords_data = load_keyword_responses()
-    roles_data = load_role_triggers()
-    grant_data = load_grant_commands()
-
-    stats = {
-        "bot_ready": _bot_state.get("ready", False),
-        "guilds": _bot_state.get("guilds", 0),
-        "users": _bot_state.get("users", 0),
-        "started_at": _bot_state.get("started_at", ""),
-        "keywords_count": len(keywords_data.get("embeds", [])),
-        "triggers_count": len(roles_data.get("triggers", [])),
-        "grant_count": len(grant_data.get("commands", [])),
-        "warnings_count": WarningStore().get_total_count(),
+# ---------------------------------------------------------------------------
+# Helper: common template context
+# ---------------------------------------------------------------------------
+def _ctx(request: Request, sess: dict, page: str, **extra) -> dict:
+    guilds = _admin_guilds(sess)
+    gid = _selected_guild(request, guilds)
+    return {
+        "request": request,
+        "page": page,
+        "user": sess,
+        "avatar_url": _avatar_url(sess),
+        "admin_guilds": guilds,
+        "guild_id": gid,
+        **extra,
     }
 
-    # Calculate uptime
-    stats["uptime"] = calculate_uptime(stats["started_at"])
 
-    # Client latency
-    client = _bot_state.get("client")
-    stats["latency"] = f"{round(client.latency * 1000)}ms" if client else "N/A"
+# ---------------------------------------------------------------------------
+# UI pages
+# ---------------------------------------------------------------------------
+@app.get("/ui/dashboard", response_class=HTMLResponse)
+async def ui_dashboard(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    from .utils import format_uptime
+    ctx = _ctx(request, sess, "dashboard")
+    ctx["bot_state"] = _bot_state
+    ctx["uptime"] = format_uptime(_bot_state.get("started_at", ""))
+    ctx["warning_count"] = get_db().total_warning_count()
+    resp = templates.TemplateResponse("dashboard.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
 
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {"request": request, "stats": stats, "active": "dashboard"},
-    )
 
-
-# --- UI Pages ---
 @app.get("/ui/keywords", response_class=HTMLResponse)
-async def ui_keywords(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    data = load_keyword_responses()
-    return templates.TemplateResponse(
-        "keywords.html",
-        {"request": request, "embeds": data.get("embeds", []), "active": "keywords"},
-    )
+async def ui_keywords(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "keywords")
+    resp = templates.TemplateResponse("keywords.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
 
 
 @app.get("/ui/roles", response_class=HTMLResponse)
-async def ui_roles(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    data = load_role_triggers()
-    return templates.TemplateResponse(
-        "roles.html",
-        {"request": request, "triggers": data.get("triggers", []), "active": "roles"},
-    )
+async def ui_roles(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "roles")
+    resp = templates.TemplateResponse("roles.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
 
 
 @app.get("/ui/grant", response_class=HTMLResponse)
-async def ui_grant(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    data = load_grant_commands()
-    return templates.TemplateResponse(
-        "grant.html",
-        {"request": request, "commands": data.get("commands", []), "active": "grant"},
-    )
+async def ui_grant(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "grant")
+    resp = templates.TemplateResponse("grant.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
 
 
-# --- Warnings page ---
 @app.get("/ui/warnings", response_class=HTMLResponse)
-async def ui_warnings(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    store = WarningStore()
-    # Collect warnings from all guilds
-    all_warnings = []
-    for gkey in store._data:
-        all_warnings.extend(store.get_all_warnings_for_guild(int(gkey)))
-    return templates.TemplateResponse(
-        "warnings.html",
-        {"request": request, "warnings": all_warnings, "active": "warnings"},
-    )
+async def ui_warnings(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "warnings")
+    resp = templates.TemplateResponse("warnings.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
 
 
-@app.get("/api/warnings", response_class=JSONResponse)
-async def api_get_warnings(session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    store = WarningStore()
-    all_warnings = []
-    for gkey in store._data:
-        for w in store.get_all_warnings_for_guild(int(gkey)):
-            all_warnings.append({
-                "id": w.id,
-                "user_id": str(w.user_id),
-                "moderator_id": str(w.moderator_id),
-                "guild_id": str(w.guild_id),
-                "reason": w.reason,
-                "created_at": w.created_at,
-            })
-    all_warnings.sort(key=lambda x: x["id"], reverse=True)
-    return {"warnings": all_warnings}
+@app.get("/ui/settings", response_class=HTMLResponse)
+async def ui_settings(request: Request):
+    sess = _require_auth(request)
+    if not sess:
+        return RedirectResponse("/auth/login")
+    ctx = _ctx(request, sess, "settings")
+    resp = templates.TemplateResponse("settings.html", ctx)
+    if ctx["guild_id"]:
+        resp.set_cookie("guild_id", ctx["guild_id"], max_age=SESSION_TTL, samesite="lax")
+    return resp
 
 
-# --- API: Health check (public) ---
-@app.get("/api/health", response_class=JSONResponse)
-async def api_health() -> Dict[str, Any]:
+# ---------------------------------------------------------------------------
+# API: health (public)
+# ---------------------------------------------------------------------------
+@app.get("/api/health")
+async def api_health():
     return {
         "status": "ok",
-        "bot_ready": _bot_state.get("ready", False),
-        "guilds": _bot_state.get("guilds", 0),
-    }
-
-
-# --- API: Keyword responses ---
-@app.get("/api/keywords", response_class=JSONResponse)
-async def api_get_keywords(session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    return load_keyword_responses()
-
-
-@app.post("/api/keywords", response_class=JSONResponse)
-async def api_save_keywords(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    payload = await request.json()
-    embeds = payload.get("embeds", [])
-    if not isinstance(embeds, list):
-        return {"ok": False, "error": "'embeds' must be a list"}
-    # Sanitize data
-    for embed in embeds:
-        if not isinstance(embed, dict):
-            return {"ok": False, "error": "Each embed must be an object"}
-    logger.info("Saving %d keyword response(s)", len(embeds))
-    save_keyword_responses({"embeds": embeds})
-    return {"ok": True}
-
-
-# --- API: Role triggers ---
-@app.get("/api/roles", response_class=JSONResponse)
-async def api_get_roles(session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    return load_role_triggers()
-
-
-@app.post("/api/roles", response_class=JSONResponse)
-async def api_save_roles(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    payload = await request.json()
-    triggers = payload.get("triggers", [])
-    if not isinstance(triggers, list):
-        return {"ok": False, "error": "'triggers' must be a list"}
-    logger.info("Saving %d role trigger(s)", len(triggers))
-    save_role_triggers({"triggers": triggers})
-    return {"ok": True}
-
-
-# --- API: Grant commands ---
-@app.get("/api/grant", response_class=JSONResponse)
-async def api_get_grant(session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    return load_grant_commands()
-
-
-@app.post("/api/grant", response_class=JSONResponse)
-async def api_save_grant(request: Request, session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    payload = await request.json()
-    commands = payload.get("commands", [])
-    if not isinstance(commands, list):
-        return {"ok": False, "error": "'commands' must be a list"}
-    logger.info("Saving %d grant command(s)", len(commands))
-    save_grant_commands({"commands": commands})
-    return {"ok": True}
-
-
-# --- API: Reload ---
-@app.post("/api/reload", response_class=JSONResponse)
-async def api_reload(session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    if _reload_callback is None:
-        return {"ok": False, "error": "reload callback not configured"}
-    try:
-        _reload_callback()
-        logger.info("Feature reload triggered via API")
-        return {"ok": True}
-    except Exception as e:
-        logger.error("Reload error: %s", e)
-        return {"ok": False, "error": str(e)}
-
-
-# --- API: Bot stats (for dashboard auto-refresh) ---
-@app.get("/api/stats", response_class=JSONResponse)
-async def api_stats(session: Optional[str] = Cookie(None)) -> Any:
-    _require_auth(session)
-    client = _bot_state.get("client")
-    started_at = _bot_state.get("started_at", "")
-    uptime = calculate_uptime(started_at)
-
-    return {
-        "bot_ready": _bot_state.get("ready", False),
+        "ready": _bot_state.get("ready", False),
         "guilds": _bot_state.get("guilds", 0),
         "users": _bot_state.get("users", 0),
-        "uptime": uptime,
-        "latency": f"{round(client.latency * 1000)}ms" if client else "N/A",
     }
 
 
-# --- Start ---
-async def start_web_app(host: str = "127.0.0.1", port: int = 8000) -> None:
-    import uvicorn
+# ---------------------------------------------------------------------------
+# API auth guard
+# ---------------------------------------------------------------------------
+def _api_auth(request: Request) -> Optional[dict]:
+    sess = _session_get(request)
+    if not sess:
+        return None
+    return sess
 
-    config = uvicorn.Config(app=app, host=host, port=port, log_level="warning")
+
+def _api_guild(request: Request, sess: dict) -> Optional[str]:
+    gid = request.query_params.get("guild_id") or request.cookies.get("guild_id")
+    if not gid:
+        return None
+    admin_ids = {g["id"] for g in _admin_guilds(sess)}
+    if gid not in admin_ids:
+        return None
+    return gid
+
+
+# ---------------------------------------------------------------------------
+# API: guild list
+# ---------------------------------------------------------------------------
+@app.get("/api/guilds")
+async def api_guilds(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    guilds = _admin_guilds(sess)
+    return [{"id": g["id"], "name": g["name"], "icon": g.get("icon")} for g in guilds]
+
+
+# ---------------------------------------------------------------------------
+# API: guild config / settings
+# ---------------------------------------------------------------------------
+@app.get("/api/settings")
+async def api_settings_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    cfg = get_db().get_guild_config(gid)
+    escalation = get_db().get_escalation_rules(gid)
+    return {"config": cfg, "escalation": escalation}
+
+
+@app.post("/api/settings")
+async def api_settings_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    body = await request.json()
+    config = body.get("config", {})
+    escalation = body.get("escalation")
+    if config:
+        get_db().save_guild_config(gid, **config)
+    if escalation is not None:
+        get_db().save_escalation_rules(gid, escalation)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: keywords
+# ---------------------------------------------------------------------------
+@app.get("/api/keywords")
+async def api_keywords_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_keywords(gid)
+
+
+@app.post("/api/keywords")
+async def api_keywords_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().save_keywords(gid, data if isinstance(data, list) else [])
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: role triggers
+# ---------------------------------------------------------------------------
+@app.get("/api/roles")
+async def api_roles_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_role_triggers(gid)
+
+
+@app.post("/api/roles")
+async def api_roles_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().save_role_triggers(gid, data if isinstance(data, list) else [])
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: grant commands
+# ---------------------------------------------------------------------------
+@app.get("/api/grant")
+async def api_grant_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_grant_commands(gid)
+
+
+@app.post("/api/grant")
+async def api_grant_post(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    data = await request.json()
+    get_db().save_grant_commands(gid, data if isinstance(data, list) else [])
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# API: warnings
+# ---------------------------------------------------------------------------
+@app.get("/api/warnings")
+async def api_warnings_get(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    return get_db().get_warnings(gid)
+
+
+@app.delete("/api/warnings/{wid}")
+async def api_warning_delete(request: Request, wid: int):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    gid = _api_guild(request, sess)
+    if not gid:
+        return JSONResponse({"error": "no guild"}, 400)
+    ok = get_db().remove_warning(gid, wid)
+    return {"ok": ok}
+
+
+# ---------------------------------------------------------------------------
+# API: bot stats
+# ---------------------------------------------------------------------------
+@app.get("/api/stats")
+async def api_stats(request: Request):
+    sess = _api_auth(request)
+    if not sess:
+        return JSONResponse({"error": "unauthorized"}, 401)
+    from .utils import format_uptime
+    return {
+        "ready": _bot_state.get("ready", False),
+        "guilds": _bot_state.get("guilds", 0),
+        "users": _bot_state.get("users", 0),
+        "uptime": format_uptime(_bot_state.get("started_at", "")),
+        "warnings": get_db().total_warning_count(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Startup
+# ---------------------------------------------------------------------------
+async def start_web_app(host: str = "0.0.0.0", port: int = 8000) -> None:
+    config = uvicorn.Config(
+        app, host=host, port=port,
+        log_level="info", access_log=False,
+    )
     server = uvicorn.Server(config)
-    logger.info("Starting Nyah-Chan Admin on http://%s:%d", host, port)
+    logger.info("Web panel starting on http://%s:%d", host, port)
     await server.serve()

@@ -1,361 +1,93 @@
 {% extends "base.html" %}
+{% block title %}Keywords — Nyah-Chan{% endblock %}
 {% block content %}
 <div class="page-header">
     <h1>Keyword Responses</h1>
-    <p>Embeds déclenchés automatiquement par mots-clés dans les messages.</p>
+    <p>Réponses automatiques par mots-clés</p>
 </div>
 
-<!-- Editor Card -->
 <div class="card">
     <div class="card-header">
-        <h2>✏️ Éditer un embed</h2>
+        <h2>Liste des keywords</h2>
+        <button class="btn btn-primary btn-sm" onclick="addKeyword()">+ Ajouter</button>
     </div>
-    <form id="embed-form" onsubmit="saveEmbed(event)">
-        <div class="form-row">
-            <div class="form-group">
-                <label for="name">Nom interne (facultatif)</label>
-                <input type="text" id="name" placeholder="egirl_warning">
+    <div id="kw-list"></div>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="saveKeywords()">Sauvegarder</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let keywords = [];
+
+async function load() {
+    const res = await authFetch('/api/keywords');
+    if (!res) return;
+    keywords = await res.json();
+    render();
+}
+
+function render() {
+    const el = document.getElementById('kw-list');
+    if (!keywords.length) {
+        el.innerHTML = '<div class="empty-state"><p>Aucun keyword configuré.</p></div>';
+        return;
+    }
+    el.innerHTML = keywords.map((kw, i) => `
+        <div class="card" style="margin-bottom:0.75rem">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Triggers (virgule séparés)</label>
+                    <input type="text" value="${(kw.triggers||[]).join(', ')}"
+                        onchange="keywords[${i}].triggers = this.value.split(',').map(s=>s.trim()).filter(Boolean)">
+                </div>
+                <div class="form-group">
+                    <label>Titre</label>
+                    <input type="text" value="${esc(kw.title||'')}" onchange="keywords[${i}].title=this.value">
+                </div>
+                <div class="form-group">
+                    <label>Couleur</label>
+                    <input type="text" value="${esc(kw.color||'')}" placeholder="#ff0000 ou red"
+                        onchange="keywords[${i}].color=this.value">
+                </div>
             </div>
             <div class="form-group">
-                <label for="color">Couleur (nom ou hex)</label>
-                <input type="text" id="color" placeholder="red ou #ff0000">
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label for="triggers">Triggers (séparés par des virgules)</label>
-            <input type="text" id="triggers" placeholder="egirl, e-girl, e girl">
-        </div>
-
-        <div class="form-group">
-            <label for="title">Titre</label>
-            <input type="text" id="title" placeholder="À propos du terme « egirl »">
-        </div>
-
-        <div class="form-group">
-            <label for="description">Description</label>
-            <textarea id="description" placeholder="Texte principal de l'embed..."></textarea>
-        </div>
-
-        <!-- Fields sub-card -->
-        <div class="card" style="background: var(--bg-secondary);">
-            <div class="card-header">
-                <h2>📋 Champs de l'embed</h2>
+                <label>Description</label>
+                <textarea rows="2" onchange="keywords[${i}].description=this.value">${esc(kw.description||'')}</textarea>
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label for="field_name">Nom du champ</label>
-                    <input type="text" id="field_name" placeholder="Titre du champ">
+                    <label>Footer</label>
+                    <input type="text" value="${esc(kw.footer||'')}" onchange="keywords[${i}].footer=this.value">
                 </div>
                 <div class="form-group">
-                    <label>Inline ?</label>
-                    <div class="flex items-center gap-1" style="padding-top:0.4rem;">
-                        <input type="checkbox" id="field_inline">
-                        <span class="text-sm text-secondary">Afficher sur la même ligne</span>
-                    </div>
+                    <label>Image URL</label>
+                    <input type="text" value="${esc(kw.image_url||'')}" onchange="keywords[${i}].image_url=this.value">
+                </div>
+                <div class="form-group">
+                    <label>Thumbnail URL</label>
+                    <input type="text" value="${esc(kw.thumbnail_url||'')}" onchange="keywords[${i}].thumbnail_url=this.value">
                 </div>
             </div>
-            <div class="form-group">
-                <label for="field_value">Valeur</label>
-                <textarea id="field_value" placeholder="Contenu du champ..." style="min-height:60px;"></textarea>
-            </div>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="addField()">➕ Ajouter le champ</button>
-            <div id="fields_list" class="mt-1 text-sm"></div>
+            <button class="btn btn-danger btn-sm" onclick="keywords.splice(${i},1);render()">Supprimer</button>
         </div>
-
-        <div class="form-row mt-2">
-            <div class="form-group">
-                <label for="footer">Footer</label>
-                <input type="text" id="footer" placeholder="Texte de bas de l'embed">
-            </div>
-        </div>
-
-        <div class="form-row">
-            <div class="form-group">
-                <label for="image_url">Image URL (optionnel)</label>
-                <input type="text" id="image_url" placeholder="https://...">
-            </div>
-            <div class="form-group">
-                <label for="thumbnail_url">Thumbnail URL (optionnel)</label>
-                <input type="text" id="thumbnail_url" placeholder="https://...">
-            </div>
-        </div>
-
-        <div class="btn-group">
-            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
-            <button type="button" class="btn btn-secondary" onclick="resetForm()">Réinitialiser</button>
-            <button type="button" class="btn btn-danger" onclick="deleteCurrentEmbed()">🗑️ Supprimer</button>
-        </div>
-    </form>
-</div>
-
-<!-- Preview -->
-<div class="card">
-    <div class="card-header">
-        <h2>👁️ Prévisualisation</h2>
-    </div>
-    <div id="embed-preview" class="embed-preview">
-        <div class="empty-state">
-            <p class="text-muted">Remplissez le formulaire pour voir un aperçu</p>
-        </div>
-    </div>
-</div>
-
-<!-- List -->
-<div class="card">
-    <div class="card-header">
-        <h2>📋 Liste des embeds</h2>
-        <span class="badge" id="embeds-count">0</span>
-    </div>
-    <table>
-        <thead>
-        <tr>
-            <th>Nom</th>
-            <th>Triggers</th>
-            <th>Titre</th>
-            <th>Actions</th>
-        </tr>
-        </thead>
-        <tbody id="embed-table-body"></tbody>
-    </table>
-    <div id="embeds-empty" class="empty-state hidden">
-        <div class="icon">📝</div>
-        <p>Aucun embed configuré. Utilisez le formulaire ci-dessus pour en créer un.</p>
-    </div>
-</div>
-
-<script>
-let embeds = {{ embeds | tojson | safe }};
-let currentIndex = null;
-let fieldsData = [];
-
-function refreshTable() {
-    const tbody = document.getElementById('embed-table-body');
-    const emptyState = document.getElementById('embeds-empty');
-    const countBadge = document.getElementById('embeds-count');
-    tbody.innerHTML = '';
-    countBadge.textContent = embeds.length;
-
-    if (!embeds.length) {
-        emptyState.classList.remove('hidden');
-        return;
-    }
-    emptyState.classList.add('hidden');
-
-    embeds.forEach((e, idx) => {
-        const tr = document.createElement('tr');
-        const tags = (e.triggers || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join(' ');
-        tr.innerHTML = `
-            <td>${escapeHtml(e.name) || '<span class="text-muted">(sans nom)</span>'}</td>
-            <td>${tags}</td>
-            <td>${escapeHtml(e.title) || ''}</td>
-            <td>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="loadFromRow(${idx})">Éditer</button>
-                <button type="button" class="btn btn-danger btn-sm" onclick="deleteEmbed(${idx})">🗑️</button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
+    `).join('');
 }
 
-function loadFromRow(index) {
-    const e = embeds[index];
-    currentIndex = index;
-    document.getElementById('name').value = e.name || '';
-    document.getElementById('color').value = e.color || '';
-    document.getElementById('triggers').value = (e.triggers || []).join(', ');
-    document.getElementById('title').value = e.title || '';
-    document.getElementById('description').value = e.description || '';
-    fieldsData = Array.isArray(e.fields) ? [...e.fields] : [];
-    document.getElementById('footer').value = e.footer || '';
-    document.getElementById('image_url').value = e.image_url || '';
-    document.getElementById('thumbnail_url').value = e.thumbnail_url || '';
-    renderFieldsList();
-    updatePreview();
-    showToast('Embed chargé pour édition', 'info');
+function addKeyword() {
+    keywords.push({triggers:[],title:'',description:'',color:'',fields:[],footer:'',image_url:'',thumbnail_url:''});
+    render();
 }
 
-function resetForm() {
-    currentIndex = null;
-    document.getElementById('embed-form').reset();
-    fieldsData = [];
-    renderFieldsList();
-    updatePreview();
-    showToast('Formulaire réinitialisé', 'info');
+async function saveKeywords() {
+    const res = await authFetch('/api/keywords', {method:'POST', body: keywords});
+    if (res && res.ok) showToast('Keywords sauvegardés !');
+    else showToast('Erreur lors de la sauvegarde', 'error');
 }
 
-function deleteCurrentEmbed() {
-    if (currentIndex === null) {
-        showToast('Aucun embed sélectionné', 'error');
-        return;
-    }
-    if (!confirm('Supprimer cet embed ?')) return;
-    embeds.splice(currentIndex, 1);
-    currentIndex = null;
-    document.getElementById('embed-form').reset();
-    fieldsData = [];
-    renderFieldsList();
-    updatePreview();
-    persistEmbeds('Embed supprimé');
-}
-
-async function deleteEmbed(index) {
-    if (!confirm('Supprimer cet embed ?')) return;
-    embeds.splice(index, 1);
-    if (currentIndex === index) {
-        currentIndex = null;
-        document.getElementById('embed-form').reset();
-        fieldsData = [];
-        renderFieldsList();
-        updatePreview();
-    }
-    await persistEmbeds('Embed supprimé');
-}
-
-function addField() {
-    const name = document.getElementById('field_name').value.trim();
-    const value = document.getElementById('field_value').value.trim();
-    const inline = document.getElementById('field_inline').checked;
-    if (!name || !value) {
-        showToast('Nom et valeur du champ sont obligatoires', 'error');
-        return;
-    }
-    fieldsData.push({ name, value, inline });
-    document.getElementById('field_name').value = '';
-    document.getElementById('field_value').value = '';
-    document.getElementById('field_inline').checked = false;
-    renderFieldsList();
-    updatePreview();
-}
-
-function removeField(index) {
-    fieldsData.splice(index, 1);
-    renderFieldsList();
-    updatePreview();
-}
-
-function renderFieldsList() {
-    const container = document.getElementById('fields_list');
-    if (!container) return;
-    if (!fieldsData.length) {
-        container.innerHTML = '<p class="text-muted mt-1">Aucun champ ajouté.</p>';
-        return;
-    }
-    container.innerHTML = '';
-    fieldsData.forEach((f, idx) => {
-        const div = document.createElement('div');
-        div.className = 'flex items-center gap-1';
-        div.style.marginBottom = '0.35rem';
-        const inlineLabel = f.inline ? ' <span class="tag green">inline</span>' : '';
-        div.innerHTML = `
-            <span><strong>${escapeHtml(f.name)}</strong>${inlineLabel}: ${escapeHtml(f.value).substring(0, 60)}${f.value.length > 60 ? '...' : ''}</span>
-            <button type="button" class="btn btn-danger btn-sm" onclick="removeField(${idx})" style="margin-left:auto;">🗑️</button>
-        `;
-        container.appendChild(div);
-    });
-}
-
-function updatePreview() {
-    const prev = document.getElementById('embed-preview');
-    if (!prev) return;
-    const title = document.getElementById('title').value.trim();
-    const description = document.getElementById('description').value.trim();
-    const footer = document.getElementById('footer').value.trim();
-    const color = document.getElementById('color').value.trim();
-    const thumbnail = document.getElementById('thumbnail_url').value.trim();
-
-    if (!title && !description) {
-        prev.innerHTML = '<div class="empty-state"><p class="text-muted">Remplissez le formulaire pour voir un aperçu</p></div>';
-        return;
-    }
-
-    const colorBar = color ? `<div class="embed-color" style="background:${escapeHtml(color)};"></div>` : '<div class="embed-color"></div>';
-
-    let fieldsHtml = '';
-    if (fieldsData.length) {
-        fieldsHtml = fieldsData.map(f => `
-            <div class="embed-field${f.inline ? ' inline' : ''}">
-                <div class="embed-field-name">${escapeHtml(f.name)}</div>
-                <div class="embed-field-value">${escapeHtml(f.value)}</div>
-            </div>
-        `).join('');
-    }
-
-    const thumbHtml = thumbnail ? `<div class="embed-thumb"><img src="${escapeHtml(thumbnail)}" alt="thumb" onerror="this.style.display='none'" /></div>` : '';
-
-    prev.innerHTML = `
-        <div class="embed-wrapper">
-            ${colorBar}
-            <div class="embed-main">
-                ${title ? `<div class="embed-title">${escapeHtml(title)}</div>` : ''}
-                ${description ? `<div class="embed-description">${escapeHtml(description)}</div>` : ''}
-                ${fieldsHtml ? `<div class="embed-fields">${fieldsHtml}</div>` : ''}
-                ${footer ? `<div class="embed-footer">${escapeHtml(footer)}</div>` : ''}
-            </div>
-            ${thumbHtml}
-        </div>
-    `;
-}
-
-async function saveEmbed(event) {
-    event.preventDefault();
-    try {
-        const name = document.getElementById('name').value.trim();
-        const color = document.getElementById('color').value.trim();
-        const triggers = document.getElementById('triggers').value.split(',').map(t => t.trim()).filter(Boolean);
-        const title = document.getElementById('title').value.trim();
-        const description = document.getElementById('description').value;
-        const footer = document.getElementById('footer').value || null;
-        const image_url = document.getElementById('image_url').value || null;
-        const thumbnail_url = document.getElementById('thumbnail_url').value || null;
-
-        if (!triggers.length || !title) {
-            showToast('Triggers et titre sont obligatoires', 'error');
-            return;
-        }
-
-        const embed = { name, triggers, title, description, color, fields: [...fieldsData], footer, image_url, thumbnail_url };
-
-        if (currentIndex === null) {
-            embeds.push(embed);
-        } else {
-            embeds[currentIndex] = embed;
-        }
-
-        await persistEmbeds('Embed sauvegardé avec succès');
-    } catch (e) {
-        showToast('Erreur: ' + e, 'error');
-    }
-}
-
-async function persistEmbeds(successMessage) {
-    try {
-        const resp = await fetch('/api/keywords', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds }),
-        });
-        const data = await resp.json();
-        if (!data.ok) {
-            showToast('Erreur sauvegarde: ' + (data.error || 'inconnue'), 'error');
-            return;
-        }
-        refreshTable();
-        showToast(successMessage, 'success');
-    } catch (e) {
-        showToast('Erreur: ' + e, 'error');
-    }
-}
-
-// Live preview on input change
-['title', 'description', 'footer', 'color', 'thumbnail_url'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('input', updatePreview);
-});
-
-// Init
-refreshTable();
-renderFieldsList();
-updatePreview();
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
 </script>
 {% endblock %}

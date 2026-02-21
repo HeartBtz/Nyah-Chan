@@ -1,140 +1,58 @@
 {% extends "base.html" %}
+{% block title %}Dashboard — Nyah-Chan{% endblock %}
 {% block content %}
 <div class="page-header">
     <h1>Dashboard</h1>
-    <p>Vue d'ensemble de Nyah-Chan</p>
+    <p>Vue d'ensemble du bot</p>
 </div>
 
-<!-- Stats Grid -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-icon green">
-            {% if stats.bot_ready %}
-            <span class="status-dot online"></span>
-            {% else %}
-            <span class="status-dot offline"></span>
-            {% endif %}
+            <span class="status-dot {% if bot_state.ready %}online{% else %}offline{% endif %}"></span>
         </div>
         <div class="stat-info">
-            <h3 id="stat-status">{{ "En ligne" if stats.bot_ready else "Hors ligne" }}</h3>
+            <h3>{{ "En ligne" if bot_state.ready else "Hors ligne" }}</h3>
             <p>Statut du bot</p>
         </div>
     </div>
-
     <div class="stat-card">
-        <div class="stat-icon blue">🏠</div>
+        <div class="stat-icon blue">🌐</div>
         <div class="stat-info">
-            <h3 id="stat-guilds">{{ stats.guilds }}</h3>
+            <h3>{{ bot_state.guilds }}</h3>
             <p>Serveurs</p>
         </div>
     </div>
-
     <div class="stat-card">
         <div class="stat-icon purple">👥</div>
         <div class="stat-info">
-            <h3 id="stat-users">{{ stats.users }}</h3>
+            <h3>{{ bot_state.users }}</h3>
             <p>Utilisateurs</p>
         </div>
     </div>
-
     <div class="stat-card">
         <div class="stat-icon yellow">⏱</div>
         <div class="stat-info">
-            <h3 id="stat-uptime">{{ stats.uptime }}</h3>
+            <h3>{{ uptime }}</h3>
             <p>Uptime</p>
         </div>
     </div>
-
     <div class="stat-card">
-        <div class="stat-icon red">📡</div>
+        <div class="stat-icon red">⚠️</div>
         <div class="stat-info">
-            <h3 id="stat-latency">{{ stats.latency }}</h3>
-            <p>Latence</p>
+            <h3 id="warn-count">{{ warning_count }}</h3>
+            <p>Avertissements</p>
         </div>
     </div>
 </div>
 
-<!-- Configuration Overview -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
-    <div class="card">
-        <div class="card-header">
-            <h2>📝 Keyword Responses</h2>
-            <span class="badge">{{ stats.keywords_count }}</span>
-        </div>
-        <p class="text-secondary text-sm">Embeds déclenchés automatiquement par mots-clés dans les messages.</p>
-        <div class="btn-group">
-            <a href="/ui/keywords" class="btn btn-primary btn-sm">Gérer</a>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-header">
-            <h2>🎭 Role Triggers</h2>
-            <span class="badge">{{ stats.triggers_count }}</span>
-        </div>
-        <p class="text-secondary text-sm">Attribution automatique de rôles basée sur le contenu des messages.</p>
-        <div class="btn-group">
-            <a href="/ui/roles" class="btn btn-primary btn-sm">Gérer</a>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-header">
-            <h2>🎁 Grant Commands</h2>
-            <span class="badge">{{ stats.grant_count }}</span>
-        </div>
-        <p class="text-secondary text-sm">Commandes personnalisées pour attribuer des rôles à des membres.</p>
-        <div class="btn-group">
-            <a href="/ui/grant" class="btn btn-primary btn-sm">Gérer</a>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-header">
-            <h2>⚠️ Avertissements</h2>
-            <span class="badge">{{ stats.warnings_count }}</span>
-        </div>
-        <p class="text-secondary text-sm">Historique des avertissements de modération.</p>
-        <div class="btn-group">
-            <a href="/ui/warnings" class="btn btn-primary btn-sm">Voir</a>
-        </div>
-    </div>
-</div>
-
-<!-- Quick Actions -->
-<div class="card mt-3">
+<div class="card">
     <div class="card-header">
-        <h2>⚡ Actions rapides</h2>
+        <h2>Configuration rapide</h2>
     </div>
-    <div class="btn-group">
-        <button class="btn btn-success btn-sm" onclick="reloadConfigs()">🔄 Recharger les configs</button>
-        <button class="btn btn-secondary btn-sm" onclick="refreshStats()">📊 Rafraîchir les stats</button>
-    </div>
+    <p class="text-secondary text-sm">
+        Utilisez les onglets ci-dessus pour configurer les keywords, rôles, commandes grant, et voir les warnings.
+        <br>Rendez-vous dans <a href="/ui/settings?guild_id={{ guild_id }}" style="color:var(--accent)">Paramètres</a> pour configurer l'automod, les messages de bienvenue, Ollama, et les seuils d'escalade.
+    </p>
 </div>
-
-<script>
-// Auto-refresh stats every 30s
-async function refreshStats() {
-    try {
-        const resp = await authFetch('/api/stats');
-        if (!resp) return;
-        if (!resp.ok) return;
-        const data = await resp.json();
-        document.getElementById('stat-status').textContent = data.bot_ready ? 'En ligne' : 'Hors ligne';
-        document.getElementById('stat-guilds').textContent = data.guilds;
-        document.getElementById('stat-users').textContent = data.users;
-        document.getElementById('stat-uptime').textContent = data.uptime;
-        document.getElementById('stat-latency').textContent = data.latency;
-        // Update status dot
-        const dots = document.querySelectorAll('.status-dot');
-        dots.forEach(dot => {
-            dot.className = 'status-dot ' + (data.bot_ready ? 'online' : 'offline');
-        });
-    } catch (e) {
-        // Silently ignore refresh errors
-    }
-}
-
-setInterval(refreshStats, 30000);
-</script>
 {% endblock %}

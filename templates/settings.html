@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Paramètres — Nyah-Chan{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Paramètres du serveur</h1>
+    <p>Toute la configuration de Nyah-Chan pour ce serveur</p>
+</div>
+
+<!-- General -->
+<div class="card">
+    <div class="card-header"><h2>Général</h2></div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Préfixe des commandes</label>
+            <input type="text" id="cfg-prefix" placeholder="!">
+        </div>
+        <div class="form-group">
+            <label>Réactions automatiques</label>
+            <div class="feature-toggle">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="cfg-reactions_enabled">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span>Activer les réactions</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Welcome -->
+<div class="card">
+    <div class="card-header"><h2>Messages de bienvenue</h2></div>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-welcome_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer les messages de bienvenue</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Channel ID</label>
+            <input type="text" id="cfg-welcome_channel_id" placeholder="ID du salon">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>Message <span class="text-muted text-sm">({mention}, {user}, {server}, {count})</span></label>
+        <textarea id="cfg-welcome_message" rows="2"></textarea>
+    </div>
+</div>
+
+<!-- Goodbye -->
+<div class="card">
+    <div class="card-header"><h2>Messages d'au revoir</h2></div>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-goodbye_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer les messages d'au revoir</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Channel ID</label>
+            <input type="text" id="cfg-goodbye_channel_id" placeholder="ID du salon">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>Message <span class="text-muted text-sm">({mention}, {user}, {server}, {count})</span></label>
+        <textarea id="cfg-goodbye_message" rows="2"></textarea>
+    </div>
+</div>
+
+<!-- Automod -->
+<div class="card">
+    <div class="card-header"><h2>Auto-modération</h2></div>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-automod_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer l'auto-modération</span>
+    </div>
+    <div class="form-group">
+        <label>Mots interdits (virgule séparés)</label>
+        <textarea id="cfg-automod_bad_words" rows="2" placeholder="mot1, mot2, mot3"></textarea>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Max mentions par message</label>
+            <input type="number" id="cfg-automod_max_mentions" min="1" max="50">
+        </div>
+        <div class="form-group">
+            <label>Seuil majuscules (%)</label>
+            <input type="number" id="cfg-automod_max_caps_percent" min="50" max="100">
+        </div>
+    </div>
+</div>
+
+<!-- Moderation log -->
+<div class="card">
+    <div class="card-header"><h2>Journal de modération</h2></div>
+    <div class="form-group">
+        <label>Channel ID du log mod</label>
+        <input type="text" id="cfg-mod_log_channel_id" placeholder="ID du salon (laisser vide pour désactiver)">
+    </div>
+</div>
+
+<!-- Ollama -->
+<div class="card">
+    <div class="card-header"><h2>Ollama Q&A</h2></div>
+    <div class="feature-toggle mb-2">
+        <label class="toggle-switch">
+            <input type="checkbox" id="cfg-ollama_enabled">
+            <span class="toggle-slider"></span>
+        </label>
+        <span>Activer Ollama</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>URL de base</label>
+            <input type="text" id="cfg-ollama_base_url" placeholder="http://localhost:11434">
+        </div>
+        <div class="form-group">
+            <label>Modèle</label>
+            <input type="text" id="cfg-ollama_model" placeholder="llama3">
+        </div>
+        <div class="form-group">
+            <label>Timeout (secondes)</label>
+            <input type="number" id="cfg-ollama_timeout" min="5" max="300">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>System prompt</label>
+        <textarea id="cfg-ollama_system_prompt" rows="3"></textarea>
+    </div>
+</div>
+
+<!-- Escalation -->
+<div class="card">
+    <div class="card-header">
+        <h2>Escalade automatique des warnings</h2>
+        <button class="btn btn-primary btn-sm" onclick="addRule()">+ Règle</button>
+    </div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead><tr>
+                <th>Nombre de warns</th>
+                <th>Action</th>
+                <th>Paramètre (min timeout)</th>
+                <th></th>
+            </tr></thead>
+            <tbody id="esc-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="btn-group" style="margin-top:1.5rem">
+    <button class="btn btn-success" onclick="saveAll()">Sauvegarder tout</button>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CFG_FIELDS = [
+    'prefix','reactions_enabled','welcome_enabled','welcome_channel_id','welcome_message',
+    'goodbye_enabled','goodbye_channel_id','goodbye_message',
+    'automod_enabled','automod_bad_words','automod_max_mentions','automod_max_caps_percent',
+    'mod_log_channel_id',
+    'ollama_enabled','ollama_base_url','ollama_model','ollama_timeout','ollama_system_prompt'
+];
+const TOGGLES = ['reactions_enabled','welcome_enabled','goodbye_enabled','automod_enabled','ollama_enabled'];
+let escalation = [];
+
+async function load() {
+    const res = await authFetch('/api/settings');
+    if (!res) return;
+    const data = await res.json();
+    const cfg = data.config || {};
+    escalation = data.escalation || [];
+
+    CFG_FIELDS.forEach(f => {
+        const el = document.getElementById('cfg-' + f);
+        if (!el) return;
+        if (TOGGLES.includes(f)) el.checked = !!cfg[f];
+        else el.value = cfg[f] ?? '';
+    });
+    renderEsc();
+}
+
+function renderEsc() {
+    const tb = document.getElementById('esc-body');
+    if (!escalation.length) {
+        tb.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.5rem">Aucune règle d\'escalade.</td></tr>';
+        return;
+    }
+    tb.innerHTML = escalation.map((r, i) => `<tr>
+        <td><input type="number" min="1" value="${r.warn_count||0}" onchange="escalation[${i}].warn_count=+this.value" style="width:80px"></td>
+        <td><select onchange="escalation[${i}].action=this.value">
+            <option value="timeout" ${r.action==='timeout'?'selected':''}>Timeout</option>
+            <option value="kick" ${r.action==='kick'?'selected':''}>Kick</option>
+            <option value="ban" ${r.action==='ban'?'selected':''}>Ban</option>
+        </select></td>
+        <td><input type="number" min="0" value="${r.action_param||0}" onchange="escalation[${i}].action_param=+this.value" style="width:100px"></td>
+        <td><button class="btn btn-danger btn-sm" onclick="escalation.splice(${i},1);renderEsc()">×</button></td>
+    </tr>`).join('');
+}
+
+function addRule() {
+    escalation.push({warn_count: escalation.length ? Math.max(...escalation.map(r=>r.warn_count))+1 : 3, action:'timeout', action_param:60});
+    renderEsc();
+}
+
+async function saveAll() {
+    const config = {};
+    CFG_FIELDS.forEach(f => {
+        const el = document.getElementById('cfg-' + f);
+        if (!el) return;
+        if (TOGGLES.includes(f)) config[f] = el.checked ? 1 : 0;
+        else if (el.type === 'number') config[f] = +el.value;
+        else config[f] = el.value;
+    });
+    const res = await authFetch('/api/settings', {method:'POST', body: {config, escalation}});
+    if (res && res.ok) showToast('Paramètres sauvegardés !');
+    else showToast('Erreur lors de la sauvegarde', 'error');
+}
+
+load();
+</script>
+{% endblock %}

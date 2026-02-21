@@ -1,63 +1,62 @@
 {% extends "base.html" %}
+{% block title %}Warnings — Nyah-Chan{% endblock %}
 {% block content %}
 <div class="page-header">
-    <h1>⚠️ Avertissements</h1>
-    <p>Tous les avertissements de modération</p>
+    <h1>Avertissements</h1>
+    <p>Historique des warnings du serveur</p>
 </div>
 
-<!-- Search bar -->
-<div class="card" style="margin-bottom: 1.5rem;">
-    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-        <input type="text" id="search-input" placeholder="Rechercher par ID utilisateur, raison..." class="input" style="flex: 1; min-width: 200px;">
-        <span class="text-secondary text-sm" id="result-count">{{ warnings|length }} avertissement(s)</span>
+<div class="card">
+    <div class="card-header">
+        <h2>Warnings</h2>
+        <span class="badge" id="w-count">0</span>
     </div>
-</div>
-
-{% if warnings %}
-<div class="table-container">
-    <table class="data-table" id="warnings-table">
-        <thead>
-            <tr>
-                <th>#ID</th>
+    <div class="table-container">
+        <table class="data-table">
+            <thead><tr>
+                <th>#</th>
                 <th>Utilisateur</th>
                 <th>Modérateur</th>
                 <th>Raison</th>
                 <th>Date</th>
-                <th>Serveur</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for w in warnings %}
-            <tr class="warning-row">
-                <td><code>{{ w.id }}</code></td>
-                <td><code>{{ w.user_id }}</code></td>
-                <td><code>{{ w.moderator_id }}</code></td>
-                <td>{{ w.reason }}</td>
-                <td>{{ w.created_at }}</td>
-                <td><code>{{ w.guild_id }}</code></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                <th></th>
+            </tr></thead>
+            <tbody id="w-body"></tbody>
+        </table>
+    </div>
 </div>
-{% else %}
-<div class="card" style="text-align: center; padding: 3rem;">
-    <p class="text-secondary">Aucun avertissement enregistré.</p>
-</div>
-{% endif %}
+{% endblock %}
 
+{% block scripts %}
 <script>
-document.getElementById('search-input').addEventListener('input', function() {
-    const query = this.value.toLowerCase();
-    const rows = document.querySelectorAll('.warning-row');
-    let visible = 0;
-    rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        const match = !query || text.includes(query);
-        row.style.display = match ? '' : 'none';
-        if (match) visible++;
-    });
-    document.getElementById('result-count').textContent = visible + ' avertissement(s)';
-});
+async function load() {
+    const res = await authFetch('/api/warnings');
+    if (!res) return;
+    const warnings = await res.json();
+    document.getElementById('w-count').textContent = warnings.length;
+    const tb = document.getElementById('w-body');
+    if (!warnings.length) {
+        tb.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:2rem">Aucun avertissement.</td></tr>';
+        return;
+    }
+    tb.innerHTML = warnings.map(w => `<tr>
+        <td><code>#${w.id}</code></td>
+        <td><code>${w.user_id}</code></td>
+        <td><code>${w.moderator_id}</code></td>
+        <td>${esc(w.reason)}</td>
+        <td class="text-muted text-sm">${w.created_at}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="removeWarn(${w.id})">×</button></td>
+    </tr>`).join('');
+}
+
+async function removeWarn(id) {
+    if (!confirm('Supprimer le warning #' + id + ' ?')) return;
+    const res = await authFetch('/api/warnings/' + id, {method:'DELETE'});
+    if (res && res.ok) { showToast('Warning supprimé'); load(); }
+    else showToast('Erreur', 'error');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+load();
 </script>
 {% endblock %}

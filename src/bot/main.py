@@ -1,3 +1,4 @@
+"""Nyah-Chan — Discord bot entry point."""
 from __future__ import annotations
 
 import asyncio
@@ -6,24 +7,15 @@ import os
 import signal
 import sys
 from datetime import datetime, timezone
-from importlib import util as importlib_util
+from logging.handlers import RotatingFileHandler
 
 import discord
 from dotenv import find_dotenv, load_dotenv
 
-from .features import commands  # noqa: F401
-from .features import automod  # noqa: F401
-from .features import grant_commands  # noqa: F401
-from .features import keyword_responses  # noqa: F401
-from .features import ollama_qna  # noqa: F401
-from .features import role_triggers  # noqa: F401
-from .features import registry as feature_registry
-from .moderation import ModerationCommands
-
 logger = logging.getLogger("nyahchan")
 
-# Global bot state (accessible from web panel)
-bot_state = {
+# Global bot state (read by web panel)
+bot_state: dict = {
     "started_at": None,
     "guilds": 0,
     "users": 0,
@@ -32,135 +24,112 @@ bot_state = {
 }
 
 
+# ------------------------------------------------------------------
+# Client
+# ------------------------------------------------------------------
 def create_client() -> discord.Client:
-    """Create the Discord client with appropriate intents."""
     intents = discord.Intents.default()
     intents.message_content = True
-    use_members = os.getenv("USE_MEMBERS_INTENT", "1") not in ("0", "false", "False")
-    if use_members:
+    if os.getenv("USE_MEMBERS_INTENT", "1") not in ("0", "false"):
         intents.members = True
-    client = discord.Client(intents=intents)
-    return client
+    return discord.Client(intents=intents)
 
 
+# ------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------
 def setup_logging() -> None:
-    """Configure logging with console and file output.
-
-    LOG_LEVEL (.env) can be DEBUG, INFO, WARNING, ERROR, CRITICAL.
-    """
     level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
-    console_fmt = logging.Formatter(
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(level)
+    console.setFormatter(logging.Formatter(
         "[%(asctime)s] [%(levelname)-7s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    console_handler.setFormatter(console_fmt)
+    ))
 
-    # Rotating file handler (5 MB per file, keep 3 backups)
-    from logging.handlers import RotatingFileHandler
     os.makedirs("logs", exist_ok=True)
-    file_handler = RotatingFileHandler(
+    fh = RotatingFileHandler(
         "logs/nyahchan.log", encoding="utf-8",
         maxBytes=5 * 1024 * 1024, backupCount=3,
     )
-    file_handler.setLevel(logging.DEBUG)
-    file_fmt = logging.Formatter(
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter(
         "[%(asctime)s] [%(levelname)-7s] %(name)s (%(filename)s:%(lineno)d): %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    file_handler.setFormatter(file_fmt)
+    ))
 
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.addHandler(console)
+    root.addHandler(fh)
 
-    # Reduce noise from libraries
-    logging.getLogger("discord.gateway").setLevel(logging.WARNING)
-    logging.getLogger("discord.http").setLevel(logging.WARNING)
-    logging.getLogger("discord.client").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    for noisy in ("discord.gateway", "discord.http", "discord.client",
+                   "uvicorn.access", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
-def preflight_checks() -> bool:
-    """Run checks before launching the client."""
-    if importlib_util.find_spec("audioop") is None:
-        logger.warning(
-            "Module 'audioop' absent (removed in Python 3.13). "
-            "Audio features won't work. Install 'audioop-lts' or use Python ≤3.12."
-        )
-
-    token = os.getenv("DISCORD_TOKEN", "")
-    if not token or token in ("YOUR_TOKEN", "YOUR_TOKEN_HERE"):
-        logger.error("DISCORD_TOKEN is missing or invalid. Set it in .env")
-        return False
-
-    return True
-
-
+# ------------------------------------------------------------------
+# Async main
+# ------------------------------------------------------------------
 async def async_main() -> None:
-    """Main async entry point for the bot."""
     load_dotenv(find_dotenv())
     setup_logging()
 
-    if not preflight_checks():
+    token = os.getenv("DISCORD_TOKEN", "")
+    if not token or token in ("YOUR_TOKEN", "YOUR_TOKEN_HERE"):
+        logger.error("DISCORD_TOKEN missing or invalid. Set it in .env")
         return
 
-    token = os.getenv("DISCORD_TOKEN", "")
-    client = create_client()
+    # Initialise the database (must be before feature imports)
+    from .database import init_db
+    init_db(os.getenv("DATABASE_PATH", "nyahchan.db"))
 
-    # Store client reference globally
+    client = create_client()
     bot_state["client"] = client
     bot_state["started_at"] = datetime.now(timezone.utc).isoformat()
 
     # Moderation slash commands
+    from .moderation import ModerationCommands
     moderation = ModerationCommands(client)
     setattr(client, "moderation", moderation)
 
-    # Features (imported above to trigger registry)
-    from .features.registry import reload_all, setup_all
-    from .web import set_bot_state, set_reload_callback
-
-    # Import and setup events
-    from .events.member_join import setup_member_join_event
-    from .events.message_create import setup_message_event
+    # Feature imports (trigger registry.register calls)
+    from .features import automod  # noqa: F401
+    from .features import commands  # noqa: F401
+    from .features import grant_commands  # noqa: F401
+    from .features import keyword_responses  # noqa: F401
+    from .features import ollama_qna  # noqa: F401
+    from .features import role_triggers  # noqa: F401
+    from .features.registry import setup_all
     from .events.ready import setup_ready_event
+    from .events.message_create import setup_message_event
+    from .events.member_join import setup_member_events
 
     setup_ready_event(client)
     setup_message_event(client)
-    setup_member_join_event(client)
+    setup_member_events(client)
     setup_all(client)
 
-    # Allow the web UI to trigger a hot-reload
-    def _reload_features() -> None:
-        logger.info("Hot-reload of features requested via WebGUI")
-        reload_all()
-
-    set_reload_callback(_reload_features)
+    # Web panel callbacks
+    from .web import set_bot_state
     set_bot_state(bot_state)
 
-    # Graceful shutdown on SIGINT / SIGTERM
+    # Graceful shutdown
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, lambda: asyncio.ensure_future(client.close()))
         except NotImplementedError:
-            pass  # Windows
+            pass
 
     try:
         await client.start(token)
     except discord.errors.PrivilegedIntentsRequired:
         logger.error(
-            "Privileged intents are missing. Enable them in the Discord Developer Portal:\n"
-            "  Application -> Bot -> Privileged Gateway Intents:\n"
-            "  - Server Members Intent (if USE_MEMBERS_INTENT=1)\n"
-            "  - Message Content Intent (required)\n"
-            "Or set USE_MEMBERS_INTENT=0 to disable Members intent."
+            "Privileged intents missing. Enable them in the Developer Portal:\n"
+            "  Server Members Intent + Message Content Intent"
         )
     except discord.errors.LoginFailure:
         logger.error("Invalid Discord token. Check DISCORD_TOKEN in .env")
@@ -177,8 +146,4 @@ def main() -> None:
     try:
         asyncio.run(async_main())
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user (Ctrl+C)")
-
-
-if __name__ == "__main__":
-    main()
+        pass
