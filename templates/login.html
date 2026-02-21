@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nyah-Chan — Connexion</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="login-container">
+    <div class="login-card">
+        <div class="logo-icon">N</div>
+        <h1>Nyah-Chan</h1>
+        <p>Panneau d'administration</p>
+
+        {% if error %}
+        <div class="login-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="/login">
+            <div class="form-group">
+                <label for="password">Mot de passe (WEB_SECRET_KEY)</label>
+                <input type="password" id="password" name="password" placeholder="Entrez le mot de passe..." autofocus required>
+            </div>
+            <button type="submit" class="btn btn-primary">Se connecter</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

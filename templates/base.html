@@ -2,76 +2,78 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nyah-Chan Admin</title>
-    <style>
-        body { font-family: system-ui, sans-serif; background: #0f172a; color: #e5e7eb; margin: 0; }
-        header { padding: 1rem 1.5rem; background: #020617; border-bottom: 1px solid #1e293b; }
-        header h1 { margin: 0; font-size: 1.2rem; }
-        nav a { margin-right: 1rem; color: #9ca3af; text-decoration: none; }
-        nav a.active { color: #38bdf8; font-weight: 600; }
-        main { padding: 1.5rem; }
-        .card { background: #020617; border: 1px solid #1e293b; border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1rem; }
-        .card h2 { margin-top: 0; font-size: 1.1rem; }
-        label { display: block; margin-top: 0.5rem; font-size: 0.9rem; color: #9ca3af; }
-        input[type="text"], textarea { width: 100%; background: #020617; border: 1px solid #374151; border-radius: 0.375rem; color: #e5e7eb; padding: 0.4rem 0.5rem; font-size: 0.9rem; box-sizing: border-box; }
-        textarea { min-height: 80px; resize: vertical; }
-        .small { font-size: 0.8rem; color: #6b7280; }
-        button { background: #22c55e; border: none; color: #022c22; padding: 0.4rem 0.9rem; border-radius: 0.375rem; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
-        button.secondary { background: #1f2937; color: #e5e7eb; }
-        .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-        .col { flex: 1 1 240px; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        th, td { border-bottom: 1px solid #1f2937; padding: 0.4rem 0.3rem; text-align: left; }
-        th { color: #9ca3af; font-weight: 500; }
-        .tag { display: inline-block; background: #111827; border-radius: 999px; padding: 0.1rem 0.6rem; margin: 0 0.2rem 0.2rem 0; font-size: 0.75rem; }
-        .status { margin-left: 0.5rem; font-size: 0.85rem; }
-        .status.ok { color: #4ade80; }
-        .status.err { color: #f97373; }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    {% block head %}{% endblock %}
 </head>
 <body>
 <header>
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
-        <h1>Nyah-Chan • Admin</h1>
-        <nav style="display:flex; align-items:center; gap:0.75rem;">
-            <a href="/ui/keywords" class="{% if active == 'keywords' %}active{% endif %}">Keyword responses</a>
-            <a href="/ui/roles" class="{% if active == 'roles' %}active{% endif %}">Role triggers</a>
-            <a href="/ui/grant" class="{% if active == 'grant' %}active{% endif %}">Grant commands</a>
-            <button type="button" class="secondary" onclick="reloadConfigs()">🔄 Recharger les configs</button>
-            <span id="reload-status" class="status"></span>
+    <div class="header-inner">
+        <a href="/ui/dashboard" class="logo">
+            <div class="logo-icon">N</div>
+            <div class="logo-text">Nyah<span>-Chan</span></div>
+        </a>
+        <nav>
+            <a href="/ui/dashboard" class="{% if active == 'dashboard' %}active{% endif %}">Dashboard</a>
+            <a href="/ui/keywords" class="{% if active == 'keywords' %}active{% endif %}">Keywords</a>
+            <a href="/ui/roles" class="{% if active == 'roles' %}active{% endif %}">Rôles</a>
+            <a href="/ui/grant" class="{% if active == 'grant' %}active{% endif %}">Grant</a>
+            <div class="nav-actions">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="reloadConfigs()">🔄 Reload</button>
+                <a href="/logout" class="btn btn-ghost btn-sm">Déconnexion</a>
+            </div>
         </nav>
     </div>
 </header>
+
+<div class="toast-container" id="toast-container"></div>
+
 <main>
     {% block content %}{% endblock %}
 </main>
+
 <script>
+// --- Toast system ---
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || 'ℹ️'}</span>
+        <span>${escapeHtml(String(message))}</span>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+// --- Reload configs ---
 async function reloadConfigs() {
-    const label = document.getElementById('reload-status');
-    if (label) {
-        label.textContent = 'Reload en cours...';
-        label.className = 'status';
-    }
     try {
         const resp = await fetch('/api/reload', { method: 'POST' });
         const data = await resp.json();
         if (data.ok) {
-            if (label) {
-                label.textContent = 'Configs rechargées dans le bot.';
-                label.className = 'status ok';
-            }
+            showToast('Configurations rechargées avec succès', 'success');
         } else {
-            if (label) {
-                label.textContent = 'Erreur reload: ' + (data.error || 'inconnue');
-                label.className = 'status err';
-            }
+            showToast('Erreur: ' + (data.error || 'inconnue'), 'error');
         }
     } catch (e) {
-        if (label) {
-            label.textContent = 'Erreur reload: ' + e;
-            label.className = 'status err';
-        }
+        showToast('Erreur réseau: ' + e, 'error');
     }
+}
+
+// --- Helper: escape HTML to prevent XSS ---
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
 }
 </script>
 </body>

@@ -205,8 +205,9 @@ cython_debug/
 grant_commands.json
 role_triggers.json
 keyword_responses.json
+moderation_warnings.json
 
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
+# --- Nyah-Chan runtime ---
+logs/
+*.log
+*.tmp

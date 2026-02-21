@@ -1,444 +1,179 @@
-# Nyah‑Chan
+# Nyah-Chan
 
-Nyah‑Chan est un bot Discord modulaire écrit en Python, conçu pour :
+Bot Discord modulaire en Python avec panel web d'administration.
 
-- gérer des rôles via des mots‑clés et des commandes spéciales,
-- répondre avec des embeds configurables (par mot‑clé),
-- faire des Q&A via un modèle Ollama (LLM local),
-- être administré via une **interface web** (webGUI) pour éditer les configs sans toucher aux fichiers JSON.
+## Fonctionnalites
 
----
+### Bot Discord
+- **Moderation** — `/ban`, `/kick`, `/timeout`, `/warn`, `/warnings`, `/unwarn`, `/purge`, `/serverinfo`
+- **Keyword Responses** — Embeds automatiques declenchees par mots-cles (cooldown anti-spam)
+- **Role Triggers** — Attribution/retrait de roles par mots-cles dans les messages
+- **Grant Commands** — Commandes speciales pour attribuer des roles (`!vip @user`)
+- **Ollama Q&A** — Reponses IA via un modele Ollama local (optionnel)
+- **Messages de bienvenue** — Embeds automatiques a l'arrivee d'un membre
+- **Commandes utilitaires** — `!ping`, `!help`, `!roles`, `!stats`
 
-## Table des matières
+### Panel Web Admin
+- **Dashboard** avec stats en temps reel (serveurs, utilisateurs, latence, uptime)
+- **Editeur de keyword responses** avec previsualisation d'embed Discord
+- **Editeur de role triggers**
+- **Editeur de grant commands**
+- **Authentification par mot de passe** (session securisee)
+- **Design moderne** dark theme
 
-- [Fonctionnalités](#fonctionnalités)
-- [Prérequis](#prérequis)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Fichiers JSON de configuration](#fichiers-json-de-configuration)
-- [Lancement du bot](#lancement-du-bot)
-- [WebGUI d’administration](#webgui-dadministration)
-- [Ajouter une nouvelle feature](#ajouter-une-nouvelle-feature)
-- [Dépannage](#dépannage)
+## Prerequis
 
----
+- **Python 3.10+**
+- Un **token Discord** ([Discord Developer Portal](https://discord.com/developers/applications))
 
-## Fonctionnalités
+## Installation rapide
 
-### Commandes de base
-
-- `!ping` : répond « Pong! ».
-- `!help` / `!aide` : affiche les commandes disponibles.
-- `!roles` : liste les rôles du serveur (réservé aux membres avec la permission `manage_roles`).
- - `/userinfo` : affiche les informations de base sur un utilisateur (ID, dates, rôles, avatar).
- - `/avatar` : affiche l'avatar d'un utilisateur en grand.
-
-### Triggers de rôles (`role_triggers`)
-
-- Ajoute ou retire automatiquement un rôle quand un message contient certains mots.
-- Création automatique du rôle si nécessaire (et repositionnement sous le rôle du bot).
-- Option de réaction automatique :
-	- ✅ quand un rôle est attribué,
-	- 🗑️ quand un rôle est retiré.
-
-### Grant commands (`grant_commands`)
-
-- Crée des commandes dédiées, par ex. `!vip @membre`, pour attribuer un rôle.
-- Limité à une liste d’IDs utilisateurs autorisés.
-- Possibilité d’envoyer un GIF quand la commande réussit.
-- Création + repositionnement automatique du rôle cible.
-
-### Keyword responses (`keyword_responses`)
-
-- Répond avec un **embed Discord** quand un message contient certains mots (ex : `egirl`).
-- Plusieurs triggers possibles par embed (`egirl`, `e-girl`, `e girl`, etc.).
-- Entièrement configurable via un fichier JSON **ou** via la webGUI.
-
-### Q&A via Ollama (`ollama_qna`)
-
-- Quand le bot est mentionné dans un message contenant un `?`, il envoie la question à un modèle Ollama (LLM local).
-- Réponse renvoyée en un ou plusieurs messages (découpage automatique).
-
-### WebGUI d’administration
-
-- Serveur web FastAPI local (par défaut `http://127.0.0.1:8000`).
-- Pages :
-	- `/ui/keywords` : gestion des embeds de `keyword_responses`.
-	- `/ui/roles` : gestion de `role_triggers`.
-	- `/ui/grant` : gestion de `grant_commands`.
-- Sauvegarde via API (JSON) qui réécrit directement les fichiers de configuration.
-- Bouton global **"Recharger les configs"** dans la barre de navigation pour recharger à chaud les features (sans redémarrer le bot) après modification des JSON.
-
----
-
-## Prérequis
-
-- **Python** : 3.11 ou 3.12 recommandé.
-- **Discord** :
-	- Un bot créé dans le portail développeur Discord.
-	- Token du bot.
-	- Intents activés dans l’onglet *Bot* :
-		- **MESSAGE CONTENT INTENT** (obligatoire).
-		- **SERVER MEMBERS INTENT** si `USE_MEMBERS_INTENT=1`.
-
-- **Ollama** (optionnel, pour la feature Q&A) :
-	- Ollama installé et un modèle (ex : `llama3`) disponible.
-	- Serveur accessible (par défaut `http://localhost:11434`).
-
----
-
-## Installation
-
-Cloner le dépôt :
-
+### Linux / macOS
 ```bash
-git clone https://github.com/<ton-user>/<ton-repo>.git
+git clone https://github.com/HeartBtz/Nyah-Chan.git
 cd Nyah-Chan
+chmod +x install.sh
+./install.sh
 ```
 
 ### Windows (PowerShell)
-
 ```powershell
-# Créer et activer l'environnement virtuel
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# Installer les dépendances
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+git clone https://github.com/HeartBtz/Nyah-Chan.git
+cd Nyah-Chan
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\install.ps1
 ```
 
-### Linux / macOS (bash)
+Les scripts d'installation :
+- Creent un environnement virtuel `.venv`
+- Installent les dependances
+- Generent un `.env` configure avec un mot de passe admin aleatoire
+- Demandent ton token Discord, prefixe, et options de moderation/bienvenue
+
+## Installation manuelle
 
 ```bash
-# Créer et activer l'environnement virtuel
+git clone https://github.com/HeartBtz/Nyah-Chan.git
+cd Nyah-Chan
 python3 -m venv .venv
-source .venv/bin/activate
-
-# Installer les dépendances
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+source .venv/bin/activate    # Linux/macOS
+# .\.venv\Scripts\Activate.ps1  # Windows
+pip install -r requirements.txt
+cp .env.example .env
+# Editer .env avec ton token et tes preferences
 ```
-
----
 
 ## Configuration
 
-### 1. Fichier `.env`
+Toute la configuration se fait via le fichier `.env` :
 
-Copier le modèle :
+| Variable | Description | Defaut |
+|---|---|---|
+| `DISCORD_TOKEN` | Token du bot Discord | *obligatoire* |
+| `PREFIX` | Prefixe des commandes texte | `!` |
+| `WEB_SECRET_KEY` | Mot de passe du panel admin | *obligatoire* |
+| `NYAH_WEB_HOST` | Hote du panel web | `0.0.0.0` |
+| `NYAH_WEB_PORT` | Port du panel web | `8000` |
+| `MOD_LOG_CHANNEL_ID` | Channel pour les logs de moderation | *(vide)* |
+| `WELCOME_ENABLED` | Activer les messages de bienvenue | `0` |
+| `WELCOME_CHANNEL_ID` | Channel de bienvenue | *(vide)* |
+| `WELCOME_MESSAGE` | Template du message | `Bienvenue {mention}...` |
+| `OLLAMA_ENABLED` | Activer le Q&A Ollama | `0` |
+| `OLLAMA_BASE_URL` | URL du serveur Ollama | `http://localhost:11434` |
+| `OLLAMA_MODEL` | Modele a utiliser | `llama3` |
 
-```bash
-cp .env.example .env
-# sous Windows PowerShell :
-# copy .env.example .env
-```
-
-Éditer `.env` et renseigner au minimum :
-
-```env
-# Discord
-DISCORD_TOKEN=TON_VRAI_TOKEN_DISCORD
-PREFIX=!
-USE_MEMBERS_INTENT=0
-LOG_LEVEL=INFO  # DEBUG | INFO | WARNING | ERROR | CRITICAL
-```
-
-Options utiles :
-
-```env
-# Réactions automatiques (role_triggers)
-REACTIONS_ENABLED=1   # 1 pour activer, 0 pour désactiver
-
-# JSON de configuration (chemins optionnels, défaut = fichiers à la racine du projet)
-ROLE_TRIGGERS_CONFIG=role_triggers.json
-GRANT_COMMANDS_CONFIG=grant_commands.json
-KEYWORD_RESPONSES_CONFIG=keyword_responses.json
-
-# Modération
-MOD_LOG_CHANNEL_ID=          # ID du salon texte pour les logs de modération
-MOD_WARNINGS_PATH=           # Chemin du fichier JSON de warns (défaut: moderation_warnings.json)
-
-# Ollama (optionnel)
-OLLAMA_ENABLED=0
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
-OLLAMA_TIMEOUT=60
-```
-
----
-
-## Commandes de modération (slash)
-
-Le bot embarque un module de modération basé sur des **commandes slash**.
-
-Permissions requises côté Discord (rôles/permissions sur le serveur) :
-
-- `/ban` : permission **Bannir des membres** (`ban_members`).
-- `/kick` : permission **Expulser des membres** (`kick_members`).
-- `/timeout`, `/warn`, `/warnings`, `/unwarn` : permission **Modérer les membres** (`moderate_members`).
-
-### Salon de logs de modération
-
-En renseignant `MOD_LOG_CHANNEL_ID` dans `.env` avec l'ID d'un salon texte, le bot enverra un embed de log pour chaque action :
-
-- bannissements (`/ban`),
-- expulsions (`/kick`),
-- timeouts (`/timeout`),
-- avertissements (`/warn`).
-
-Chaque log contient au minimum : le membre ciblé, le modérateur, la raison, et des informations supplémentaires (durée de timeout, ID d'avertissement, etc.).
-Si `MOD_LOG_CHANNEL_ID` est vide ou invalide, les commandes continuent de fonctionner mais aucun log n'est envoyé.
-
-### Avertissements (warns)
-
-Les avertissements sont stockés dans un fichier JSON (par défaut `moderation_warnings.json` à la racine, ou le chemin défini dans `MOD_WARNINGS_PATH`).
-
-Commandes principales :
-
-- `/warn membre:User raison:str` : ajoute un avertissement pour le membre sur le serveur courant et log l'action.
-- `/warnings membre:User` : liste les avertissements du membre sur le serveur courant (réponse éphémère).
-- `/unwarn id:int` : supprime un avertissement par son ID (restreint au serveur courant).
-
-Les IDs d'avertissements sont uniques et incrémentaux, mais la consultation et la suppression se font toujours par serveur.
-
----
-
-## Fichiers JSON de configuration
-
-Des fichiers `*.example.json` sont fournis comme modèles. Tu peux les copier et adapter si tu veux partir d'un exemple directement, mais ce n'est **pas obligatoire** :
-
-- si les fichiers `role_triggers.json`, `grant_commands.json` ou `keyword_responses.json` n'existent pas, ils seront **créés automatiquement** avec une structure vide au premier accès.
-
-### 1. `keyword_responses.json`
-
-Contrôle les embeds envoyés par mot‑clé.
-
-Tu peux soit laisser le bot créer un fichier vide, soit copier l'exemple :
-
-```bash
-cp keyword_responses.example.json keyword_responses.json
-# ou sous Windows PowerShell :
-# copy keyword_responses.example.json keyword_responses.json
-```
-
-Structure de l'exemple :
-
-```json
-{
-	"embeds": [
-		{
-			"name": "egirl_warning",
-			"triggers": ["egirl", "e-girl", "e girl"],
-			"title": "À propos du terme « egirl »",
-			"description": "Merci d'éviter ce terme sur le serveur...",
-			"color": "red",
-			"fields": [
-				{
-					"name": "Ce qu'on ne veut pas ❌",
-					"value": "- Exemple 1\n- Exemple 2",
-					"inline": false
-				}
-			],
-			"footer": "En cas de doute, contacte un membre du staff ✨",
-			"image_url": null,
-			"thumbnail_url": null
-		}
-	]
-}
-```
-
-- `color` peut être un **nom** (`red`, `blue`, `green`, `orange`, etc.) ou un code **hex** `#3498db` ou `3498db`.
-
-### 2. `role_triggers.json`
-
-Contrôle les triggers de rôles automatiques.
-
-Tu peux soit laisser le bot créer un fichier vide, soit copier l'exemple :
-
-```bash
-cp role_triggers.example.json role_triggers.json
-# Windows : copy role_triggers.example.json role_triggers.json
-```
-
-Structure de l'exemple :
-
-```json
-{
-	"triggers": [
-		{
-			"trigger": "je veux le rôle vip",
-			"role_name": "VIP",
-			"remove_trigger": "enlever vip"
-		}
-	]
-}
-```
-
-- Si `trigger` est dans le message → ajout du rôle.
-- Si `remove_trigger` est dans le message → retrait du rôle.
-
-### 3. `grant_commands.json`
-
-Contrôle les commandes type `!vip`.
-
-Tu peux soit laisser le bot créer un fichier vide, soit copier l'exemple :
-
-```bash
-cp grant_commands.example.json grant_commands.json
-# Windows : copy grant_commands.example.json grant_commands.json
-```
-
-Structure de l'exemple :
-
-```json
-{
-	"commands": [
-		{
-			"name": "vip",
-			"role_name": "VIP",
-			"allowed_user_ids": [123456789012345678, 987654321098765432],
-			"gif_path": "pokeball-fable.gif"
-		}
-	]
-}
-```
-
----
-
-## Lancement du bot
+## Lancement
 
 ### Bot seul
-
-#### Windows
-
-```powershell
-cd "C:\chemin\vers\Nyah-Chan"
-.\.venv\Scripts\Activate.ps1
-python .\run_bot.py
-```
-
-#### Linux / macOS
-
 ```bash
-cd /chemin/vers/Nyah-Chan
 source .venv/bin/activate
 python run_bot.py
 ```
 
-### Bot + WebGUI (recommandé)
-
-#### Windows
-
-```powershell
-cd "C:\chemin\vers\Nyah-Chan"
-.\.venv\Scripts\Activate.ps1
-python .\run_bot_with_web.py
-```
-
-#### Linux / macOS
-
+### Bot + Panel web
 ```bash
-cd /chemin/vers/Nyah-Chan
 source .venv/bin/activate
 python run_bot_with_web.py
 ```
 
-- Le bot se connecte à Discord.
-- La webGUI est disponible par défaut sur : `http://127.0.0.1:8000`.
+Le panel web sera accessible sur `http://localhost:8000` (ou le port configure).
 
----
+## Fichiers JSON de configuration
 
-## WebGUI d’administration
+Ces fichiers sont geres automatiquement via le panel web :
 
-Une fois `run_bot_with_web.py` lancé :
+| Fichier | Contenu |
+|---|---|
+| `keyword_responses.json` | Embeds declenchees par mots-cles |
+| `role_triggers.json` | Attribution de roles par mots-cles |
+| `grant_commands.json` | Commandes speciales d'attribution de roles |
+| `moderation_warnings.json` | Historique des avertissements |
 
-### `/ui/keywords`
+Des fichiers d'exemple sont fournis : `*.example.json`
 
-- Gère `keyword_responses.json`.
-- Permet de :
-	- lister les embeds,
-	- définir les **triggers** (séparés par des virgules),
-	- configurer la couleur, le titre, la description, les champs, le footer, les URLs d’images,
-	- gérer les champs d’embed via un petit formulaire (nom, valeur, inline) sans jamais écrire de JSON à la main,
-	- visualiser en direct un aperçu de l’embed (titre, description, champs, footer, thumbnail),
-	- sauvegarder (écrit le JSON sur disque).
+## Commandes slash
 
-### `/ui/roles`
+| Commande | Permission requise | Description |
+|---|---|---|
+| `/ban` | Ban Members | Bannir un membre |
+| `/kick` | Kick Members | Expulser un membre |
+| `/timeout` | Moderate Members | Mettre en timeout |
+| `/warn` | Moderate Members | Ajouter un avertissement |
+| `/warnings` | Moderate Members | Voir les avertissements |
+| `/unwarn` | Moderate Members | Retirer un avertissement |
+| `/purge` | Manage Messages | Supprimer des messages (1-200) |
+| `/serverinfo` | — | Informations du serveur |
 
-- Gère `role_triggers.json`.
-- Permet de :
-	- définir `trigger`, `role_name`, `remove_trigger`,
-	- sauvegarder la liste.
+## Commandes texte
 
-### `/ui/grant`
+| Commande | Description |
+|---|---|
+| `!help` | Liste des commandes |
+| `!ping` | Latence du bot |
+| `!roles` | Liste des roles du serveur |
+| `!stats` | Statistiques du bot |
 
-- Gère `grant_commands.json`.
-- Permet de :
-	- définir `name` (sans préfixe), `role_name`,
-	- définir les `allowed_user_ids` (séparés par des virgules),
-	- définir `gif_path`,
-	- sauvegarder la liste.
+## Structure du projet
 
-> Note : les features chargent les configs au démarrage.  
-> Après modification via la webGUI, clique sur **"Recharger les configs"** dans la barre du haut pour appliquer les changements immédiatement dans le bot, sans redémarrage.
+```
+Nyah-Chan/
+  install.sh              # Script d'installation Linux/macOS
+  install.ps1             # Script d'installation Windows
+  run_bot.py              # Lancement bot seul
+  run_bot_with_web.py     # Lancement bot + panel web
+  requirements.txt        # Dependances Python
+  .env.example            # Exemple de configuration
+  src/bot/
+    main.py               # Point d'entree du bot
+    web.py                # Panel web FastAPI
+    moderation.py         # Commandes de moderation (slash)
+    moderation_store.py   # Stockage des avertissements
+    features/
+      commands.py         # Commandes texte (!ping, !help, etc.)
+      keyword_responses.py
+      role_triggers.py
+      grant_commands.py
+      ollama_qna.py
+      registry.py         # Registre des features
+    events/
+      ready.py            # Evenement on_ready
+      message_create.py   # Dispatch des messages
+      member_join.py      # Messages de bienvenue
+    config/
+      *_store.py          # Lecture/ecriture des configs JSON
+  templates/              # Templates HTML du panel web
+  static/                 # CSS du panel web
+```
 
----
+## Securite
 
-## Ajouter une nouvelle feature
+- Authentification par session (cookie httponly + samesite)
+- Comparaison de mot de passe timing-safe (hmac)
+- Protection XSS dans les templates
+- Ecritures atomiques des fichiers de configuration
+- Verification de hierarchie des roles pour toutes les commandes de moderation
+- Validation de chemin pour les fichiers GIF (anti path-traversal)
 
-1. Créer un fichier dans `src/bot/features/`, par ex. `my_feature.py` :
+## Licence
 
-	 ```python
-	 import discord
-	 from .registry import register
-
-	 class MyFeature:
-			 name = "my_feature"
-
-			 def setup(self, client: discord.Client) -> None:
-					 # Initialisation si besoin
-					 pass
-
-			 async def on_message(self, message: discord.Message) -> None:
-					 if message.author.bot or message.guild is None:
-							 return
-					 if message.content == "!hello":
-							 await message.channel.send("Hello depuis MyFeature !")
-
-	 register(MyFeature())
-	 ```
-
-2. Importer la feature dans `src/bot/main.py` pour l’enregistrer :
-
-	 ```python
-	 from .features import my_feature  # noqa: F401
-	 ```
-
-3. Redémarrer le bot.
-
----
-
-## Dépannage
-
-- **`DISCORD_TOKEN manquant`**  
-	→ Vérifier que `.env` existe et contient `DISCORD_TOKEN=` avec ton token (sans guillemets).
-
-- **`PrivilegedIntentsRequired`**  
-	→ Activer les intents nécessaires dans le portail Discord :
-	- Message Content,
-	- Members (si `USE_MEMBERS_INTENT=1`).
-
-- **Les embeds ne s’envoient pas**  
-	- Vérifier que `keyword_responses.json` est valide (JSON bien formé).
-	- Vérifier que le `trigger` est bien dans la liste et présent dans le message.
-
-- **La webGUI ne répond pas**  
-	- S’assurer que tu as lancé `run_bot_with_web.py` et non `run_bot.py`.
-	- Vérifier que `fastapi`, `uvicorn`, `Jinja2` sont bien installés :
-
-		```bash
-		python -m pip install -r requirements.txt
-		```
-
----
+MIT

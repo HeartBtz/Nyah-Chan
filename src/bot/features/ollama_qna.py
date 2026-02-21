@@ -15,13 +15,13 @@ class OllamaQnAFeature:
     name = "ollama_qna"
 
     def __init__(self) -> None:
-        # L'activation et la configuration dépendent de .env, évalués plus tard dans setup()
         self.enabled: bool = False
         self.base_url: str | None = None
         self.model: str | None = None
         self.timeout: int | None = None
-        self.prefix = os.getenv("PREFIX", "!")  # Could reuse but we rely on mention; kept for possible future expansion
+        self.prefix = os.getenv("PREFIX", "!")
         self.max_chunk = 1900  # keep some margin under Discord 2000 char limit
+        self._rate_limits: dict[str, float] = {}  # user_id -> last_query_timestamp
 
     def setup(self, client: discord.Client) -> None:  # noqa: D401
         # Décide ici, après que .env ait été chargé dans main.async_main()
@@ -99,31 +99,58 @@ class OllamaQnAFeature:
         if '?' not in cleaned:
             return  # Simple heuristic: only answer questions
 
-        # Acknowledge briefly (optional) or directly answer
-        try:
-            logger.info(
-                f"[ollama] Trigger par {message.author.id} in guild={message.guild.id} channel={message.channel.id} prompt='{cleaned[:120]}{'...' if len(cleaned)>120 else ''}'"
-            )
-        except Exception:
-            pass
+        # Rate limiting: 1 query per user per 15 seconds
+        now = __import__("time").time()
+        user_key = str(message.author.id)
+        last_query = self._rate_limits.get(user_key, 0)
+        if now - last_query < 15:
+            remaining = int(15 - (now - last_query))
+            try:
+                await message.channel.send(
+                    f"⏳ Patiente encore {remaining}s avant de poser une autre question.",
+                    delete_after=5,
+                )
+            except Exception:
+                pass
+            return
+        self._rate_limits[user_key] = now
+
+        logger.info(
+            "[ollama] Trigger par %s in guild=%s channel=%s prompt='%s'",
+            message.author.id, message.guild.id, message.channel.id,
+            cleaned[:120] + ('...' if len(cleaned) > 120 else ''),
+        )
         await self._answer(message, cleaned)
 
     async def _answer(self, message: discord.Message, prompt: str) -> None:
-        # Query Ollama
-        answer = await self._query_ollama(prompt)
-        # Force markdown formatting (wrap in triple backticks if looks codey?)
-        # For simplicity, send as-is; ensure chunking
-        chunks = self._chunk(answer)
-        logger.debug(f"[ollama] Envoi réponse en {len(chunks)} chunk(s)")
-        for idx, ch in enumerate(chunks, start=1):
-            header = f"(part {idx}/{len(chunks)})\n" if len(chunks) > 1 else ""
-            out = header + ch
+        # Show typing indicator while querying
+        async with message.channel.typing():
+            answer = await self._query_ollama(prompt)
+
+        # Send as embed for cleaner presentation
+        if len(answer) <= 4000:
+            embed = discord.Embed(
+                description=answer,
+                color=discord.Color.blurple(),
+            )
+            embed.set_author(name=f"Réponse pour {message.author.display_name}", icon_url=message.author.display_avatar.url if message.author.display_avatar else None)
+            embed.set_footer(text=f"Modèle: {self.model}")
             try:
-                await message.channel.send(out)
-                logger.debug(f"[ollama] Chunk {idx}/{len(chunks)} envoyé (len={len(out)})")
+                await message.reply(embed=embed, mention_author=False)
             except Exception as e:
-                logger.debug(f"Échec envoi chunk réponse Ollama: {e}")
-                break
+                logger.debug(f"Échec envoi embed réponse Ollama: {e}")
+        else:
+            # Long response: chunk as plain text
+            chunks = self._chunk(answer)
+            logger.debug(f"[ollama] Envoi réponse en {len(chunks)} chunk(s)")
+            for idx, ch in enumerate(chunks, start=1):
+                header = f"(part {idx}/{len(chunks)})\n" if len(chunks) > 1 else ""
+                out = header + ch
+                try:
+                    await message.channel.send(out)
+                except Exception as e:
+                    logger.debug(f"Échec envoi chunk réponse Ollama: {e}")
+                    break
 
     def _chunk(self, text: str) -> list[str]:
         if len(text) <= self.max_chunk:

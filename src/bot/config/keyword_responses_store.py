@@ -43,12 +43,11 @@ def load_keyword_responses(path: str | None = None) -> Dict[str, Any]:
 
 
 def save_keyword_responses(data: Dict[str, Any], path: str | None = None) -> None:
-    """Save keyword responses JSON to disk.
-
-    Overwrites the target file.
-    """
+    """Save keyword responses JSON to disk atomically."""
     if path is None:
         path = get_keyword_responses_path()
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)

@@ -79,11 +79,10 @@ class GrantCommandsFeature:
 
     async def _ensure_role(self, guild: discord.Guild, role_name: str) -> Optional[discord.Role]:
         for r in guild.roles:
-            if r.name == role_name:
+            if r.name.lower() == role_name.lower():
                 return r
         try:
             role = await guild.create_role(name=role_name, mentionable=True, reason="Création auto via grant command")
-            # auto position sous le top rôle du bot si possible
             me = guild.me
             if me and me.top_role and me.top_role.position > 1:
                 target_pos = me.top_role.position - 1
@@ -123,13 +122,11 @@ class GrantCommandsFeature:
         if me is None or not me.guild_permissions.manage_roles:
             return
 
-        # Extraire nom de commande
         body = content[len(self.prefix):].strip()
         cmd = body.split()[0].lower() if body else ""
         if not cmd:
             return
 
-        # Correspondance commande
         matched: Optional[GrantCommand] = None
         for gc in self.commands:
             if gc.name == cmd:
@@ -138,53 +135,108 @@ class GrantCommandsFeature:
         if matched is None:
             return
 
-        # Vérifier permissions d'appelant
+        # Permission check
         if message.author.id not in matched.allowed_user_ids:
+            embed = discord.Embed(
+                title="⛔ Accès refusé",
+                description="Tu n'as pas la permission d'utiliser cette commande.",
+                color=discord.Color.red(),
+            )
+            try:
+                await message.channel.send(embed=embed, delete_after=10)
+            except Exception:
+                pass
             return
 
-        # Trouver la cible
+        # Find target
         target = self._parse_target_member(message)
         if target is None:
+            embed = discord.Embed(
+                title="❓ Cible manquante",
+                description=f"Utilisation: `{self.prefix}{matched.name} @membre`",
+                color=discord.Color.orange(),
+            )
             try:
-                await message.channel.send("Spécifie une cible: ex. !{0} @membre".format(matched.name))
+                await message.channel.send(embed=embed, delete_after=10)
             except Exception:
                 pass
             return
 
-        # Assurer le rôle
+        # Ensure role exists
         role = await self._ensure_role(message.guild, matched.role_name)
         if role is None:
-            return
-
-        # Vérifier hiérarchie
-        if role.position >= me.top_role.position:
+            embed = discord.Embed(
+                title="❌ Erreur",
+                description=f"Impossible de trouver ou créer le rôle **{matched.role_name}**.",
+                color=discord.Color.red(),
+            )
             try:
-                await message.channel.send(
-                    f"Je ne peux pas gérer le rôle '{role.name}' (position trop haute). Place mon rôle au-dessus."
-                )
+                await message.channel.send(embed=embed)
             except Exception:
                 pass
             return
 
-        # Attribuer
-        if role in target.roles:
-            # déjà présent, rien à faire
+        # Hierarchy check
+        if role.position >= me.top_role.position:
+            embed = discord.Embed(
+                title="⚠️ Hiérarchie des rôles",
+                description=f"Je ne peux pas gérer le rôle **{role.name}** (position trop haute). Place mon rôle au-dessus.",
+                color=discord.Color.orange(),
+            )
+            try:
+                await message.channel.send(embed=embed)
+            except Exception:
+                pass
             return
+
+        # Already has role
+        if role in target.roles:
+            embed = discord.Embed(
+                title="ℹ️ Déjà attribué",
+                description=f"{target.mention} possède déjà le rôle **{role.name}**.",
+                color=discord.Color.blue(),
+            )
+            try:
+                await message.channel.send(embed=embed, delete_after=10)
+            except Exception:
+                pass
+            return
+
+        # Grant role
         try:
             await target.add_roles(role, reason=f"Grant command '{matched.name}' par {message.author}")
             logger.info(f"Rôle '{role.name}' attribué à {target.display_name} via commande {matched.name}.")
-            # Envoyer le GIF si défini
+
+            embed = discord.Embed(
+                title="✅ Rôle attribué",
+                description=f"{target.mention} a reçu le rôle **{role.name}** !",
+                color=discord.Color.green(),
+            )
+            embed.set_footer(text=f"Par {message.author.display_name}")
+            await message.channel.send(embed=embed)
+
+            # Send GIF if defined (path traversal protection)
             if matched.gif_path:
-                # Préserver relative path depuis racine projet
-                if os.path.exists(matched.gif_path):
+                resolved = os.path.realpath(matched.gif_path)
+                allowed_base = os.path.realpath(".")
+                if resolved.startswith(allowed_base) and os.path.isfile(resolved):
                     try:
-                        await message.channel.send(file=discord.File(matched.gif_path))
+                        await message.channel.send(file=discord.File(resolved))
                     except Exception as e:
                         logger.debug(f"Envoi gif échoué: {e}")
                 else:
-                    logger.debug(f"gif_path introuvable: {matched.gif_path}")
+                    logger.warning(f"gif_path refusé (hors répertoire ou introuvable): {matched.gif_path}")
         except Exception as e:
             logger.error(f"Échec add rôle {role.name} via grant: {e}")
+            embed = discord.Embed(
+                title="❌ Erreur",
+                description=f"Impossible d'attribuer le rôle: {e}",
+                color=discord.Color.red(),
+            )
+            try:
+                await message.channel.send(embed=embed)
+            except Exception:
+                pass
 
 
 register(GrantCommandsFeature())

@@ -70,6 +70,8 @@ class KeywordResponsesFeature:
         self.configs: List[KeywordEmbedConfig] = []
         # Index rapide: mot-clé -> config
         self._trigger_index: Dict[str, KeywordEmbedConfig] = {}
+        # Cooldown tracker: "channel_id:trigger" -> last_sent_timestamp
+        self._cooldowns: Dict[str, float] = {}
     def _load_from_store(self) -> None:
         self.configs.clear()
         self._trigger_index.clear()
@@ -170,11 +172,23 @@ class KeywordResponsesFeature:
 
         content = (message.content or "").lower()
 
+        # Cooldown: avoid spamming same embed in same channel
+        now = __import__("time").time()
+        channel_id = message.channel.id
+
         for trig, cfg in self._trigger_index.items():
             if trig in content:
+                # 30-second cooldown per trigger per channel
+                cooldown_key = f"{channel_id}:{trig}"
+                last_sent = self._cooldowns.get(cooldown_key, 0)
+                if now - last_sent < 30:
+                    logger.debug("Cooldown actif pour '%s' dans channel %s", trig, channel_id)
+                    return
+
                 try:
                     embed = cfg.build_embed()
                     await message.channel.send(embed=embed)
+                    self._cooldowns[cooldown_key] = now
                     logger.debug("Embed envoyé pour le mot-clé '%s'", trig)
                 except Exception as e:
                     logger.warning("Échec de l'envoi de l'embed pour '%s': %s", trig, e)

@@ -38,5 +38,7 @@ def save_role_triggers(data: Dict[str, Any], path: str | None = None) -> None:
     if path is None:
         path = get_role_triggers_path()
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)

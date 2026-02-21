@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Optional, List
-from datetime import timedelta
-import os
-
 import logging
+import os
+from datetime import timedelta, timezone
+from typing import List, Optional
+
 import discord
 from discord import app_commands
 
-from .moderation_store import WarningStore, WarningEntry
+from .moderation_store import WarningEntry, WarningStore
 
 logger = logging.getLogger("nyahchan.moderation")
 
@@ -17,12 +17,10 @@ def _format_user_label(user: discord.abc.User) -> str:
     return f"{user} (`{user.id}`)"
 
 
-def _get_mod_log_channel(guild: discord.Guild | None, client: discord.Client) -> discord.abc.Messageable | None:
-    """Retourne le salon de logs de modération configuré via MOD_LOG_CHANNEL_ID.
-
-    Si la variable n'est pas définie ou que le salon est introuvable, retourne None.
-    """
-
+def _get_mod_log_channel(
+    guild: discord.Guild | None, client: discord.Client
+) -> discord.abc.Messageable | None:
+    """Return the configured moderation log channel, or None."""
     if guild is None:
         return None
 
@@ -33,15 +31,28 @@ def _get_mod_log_channel(guild: discord.Guild | None, client: discord.Client) ->
     try:
         channel_id = int(channel_id_raw)
     except ValueError:
-        logger.error(f"MOD_LOG_CHANNEL_ID invalide: {channel_id_raw!r}")
+        logger.error("MOD_LOG_CHANNEL_ID invalid: %r", channel_id_raw)
         return None
 
     channel = guild.get_channel(channel_id) or client.get_channel(channel_id)
-    if channel is None or not isinstance(channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel, discord.StageChannel)):
-        logger.warning(f"Salon de log de modération introuvable pour ID {channel_id}")
+    if channel is None or not isinstance(
+        channel,
+        (discord.TextChannel, discord.Thread, discord.VoiceChannel, discord.StageChannel),
+    ):
+        logger.warning("Moderation log channel not found for ID %d", channel_id)
         return None
 
     return channel
+
+
+async def _send_log(guild: discord.Guild | None, client: discord.Client, embed: discord.Embed) -> None:
+    """Send an embed to the moderation log channel, silently ignoring errors."""
+    log_channel = _get_mod_log_channel(guild, client)
+    if log_channel is not None:
+        try:
+            await log_channel.send(embed=embed)
+        except Exception as e:
+            logger.debug("Failed to send mod log: %s", e)
 
 
 class ModerationCommands:
@@ -50,76 +61,149 @@ class ModerationCommands:
         self.tree = app_commands.CommandTree(client)
         self.warning_store = WarningStore()
         self._register_commands()
+        self._register_error_handlers()
+
+    def _register_error_handlers(self) -> None:
+        """Global error handler for slash commands."""
+
+        @self.tree.error
+        async def on_app_command_error(
+            interaction: discord.Interaction, error: app_commands.AppCommandError
+        ) -> None:
+            if isinstance(error, app_commands.MissingPermissions):
+                missing = ", ".join(error.missing_permissions)
+                msg = f"🚫 Permission(s) manquante(s): `{missing}`"
+            elif isinstance(error, app_commands.BotMissingPermissions):
+                missing = ", ".join(error.missing_permissions)
+                msg = f"🚫 Je n'ai pas les permissions requises: `{missing}`"
+            elif isinstance(error, app_commands.CommandOnCooldown):
+                msg = f"⏳ Commande en cooldown. Réessaie dans {error.retry_after:.1f}s."
+            else:
+                msg = f"❌ Une erreur est survenue: {error}"
+                logger.error("Slash command error: %s", error, exc_info=error)
+
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(msg, ephemeral=True)
+                else:
+                    await interaction.response.send_message(msg, ephemeral=True)
+            except Exception:
+                pass
 
     def _register_commands(self) -> None:
-        @self.tree.command(name="userinfo", description="Afficher les informations de base sur un utilisateur")
+        # --- /userinfo ---
+        @self.tree.command(name="userinfo", description="Afficher les informations d'un utilisateur")
         async def userinfo(
             interaction: discord.Interaction,
             member: Optional[discord.Member] = None,
         ) -> None:
-            target = member or interaction.user  # type: ignore[assignment]
-
+            target = member or interaction.user
             if target is None:
-                await interaction.response.send_message(
-                    "Impossible de déterminer l'utilisateur.", ephemeral=True
-                )
+                await interaction.response.send_message("Impossible de déterminer l'utilisateur.", ephemeral=True)
                 return
 
-            assert interaction.user is not None
-
-            # Préparer un embed avec les infos de compte
-            embed = discord.Embed(
-                title=f"Infos utilisateur — {target}",
-                color=discord.Color.blurple(),
-            )
-
+            embed = discord.Embed(title=f"Infos — {target}", color=discord.Color.blurple())
             embed.set_thumbnail(url=target.display_avatar.url)
-
-            embed.add_field(name="ID", value=f"`{target.id}`", inline=False)
+            embed.add_field(name="ID", value=f"`{target.id}`", inline=True)
             embed.add_field(
                 name="Compte créé le",
-                value=discord.utils.format_dt(target.created_at, style="F"),
-                inline=False,
+                value=discord.utils.format_dt(target.created_at, style="R"),
+                inline=True,
             )
 
             if isinstance(target, discord.Member):
                 embed.add_field(
-                    name="A rejoint le serveur le",
-                    value=discord.utils.format_dt(target.joined_at, style="F") if target.joined_at else "(inconnu)",
-                    inline=False,
+                    name="A rejoint le",
+                    value=discord.utils.format_dt(target.joined_at, style="R") if target.joined_at else "(inconnu)",
+                    inline=True,
                 )
                 roles = [r.mention for r in target.roles if not r.is_default()]
-                roles_text = ", ".join(roles) if roles else "Aucun rôle spécifique"
-                embed.add_field(name="Rôles", value=roles_text, inline=False)
+                roles_text = ", ".join(roles[:20]) if roles else "Aucun rôle"
+                if len(roles) > 20:
+                    roles_text += f" (+{len(roles) - 20} autres)"
+                embed.add_field(name=f"Rôles [{len(roles)}]", value=roles_text, inline=False)
 
-            is_bot = "Oui" if target.bot else "Non"
-            embed.add_field(name="Bot", value=is_bot, inline=True)
-
+            embed.add_field(name="Bot", value="Oui" if target.bot else "Non", inline=True)
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
+        # --- /avatar ---
         @self.tree.command(name="avatar", description="Afficher l'avatar d'un utilisateur")
         async def avatar(
             interaction: discord.Interaction,
             member: Optional[discord.Member] = None,
         ) -> None:
-            target = member or interaction.user  # type: ignore[assignment]
-
+            target = member or interaction.user
             if target is None:
-                await interaction.response.send_message(
-                    "Impossible de déterminer l'utilisateur.", ephemeral=True
-                )
+                await interaction.response.send_message("Impossible de déterminer l'utilisateur.", ephemeral=True)
+                return
+
+            embed = discord.Embed(title=f"Avatar de {target}", color=discord.Color.blurple())
+            embed.set_image(url=target.display_avatar.with_size(1024).url)
+            await interaction.response.send_message(embed=embed)
+
+        # --- /serverinfo ---
+        @self.tree.command(name="serverinfo", description="Afficher les informations du serveur")
+        async def serverinfo(interaction: discord.Interaction) -> None:
+            guild = interaction.guild
+            if guild is None:
+                await interaction.response.send_message("Utilisable uniquement sur un serveur.", ephemeral=True)
                 return
 
             embed = discord.Embed(
-                title=f"Avatar de {target}",
+                title=f"📊 {guild.name}",
                 color=discord.Color.blurple(),
             )
-            embed.set_image(url=target.display_avatar.url)
-            embed.add_field(name="ID", value=f"`{target.id}`", inline=False)
+            if guild.icon:
+                embed.set_thumbnail(url=guild.icon.url)
 
-            await interaction.response.send_message(embed=embed)
+            embed.add_field(name="Propriétaire", value=str(guild.owner) if guild.owner else "Inconnu", inline=True)
+            embed.add_field(name="Membres", value=str(guild.member_count or 0), inline=True)
+            embed.add_field(name="Rôles", value=str(len(guild.roles)), inline=True)
+            embed.add_field(name="Salons texte", value=str(len(guild.text_channels)), inline=True)
+            embed.add_field(name="Salons vocaux", value=str(len(guild.voice_channels)), inline=True)
+            embed.add_field(name="Emojis", value=str(len(guild.emojis)), inline=True)
+            embed.add_field(
+                name="Créé le",
+                value=discord.utils.format_dt(guild.created_at, style="F"),
+                inline=False,
+            )
+            embed.add_field(
+                name="Niveau de vérification",
+                value=str(guild.verification_level).capitalize(),
+                inline=True,
+            )
+            embed.add_field(name="Boosts", value=str(guild.premium_subscription_count), inline=True)
 
-        @self.tree.command(name="ban", description="Bannir un membre avec une raison")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        # --- /purge ---
+        @self.tree.command(name="purge", description="Supprimer un nombre de messages dans le salon")
+        @app_commands.checks.has_permissions(manage_messages=True)
+        async def purge(
+            interaction: discord.Interaction,
+            count: app_commands.Range[int, 1, 200],
+        ) -> None:
+            if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+                await interaction.response.send_message("Utilisable uniquement dans un salon texte.", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+            try:
+                deleted = await interaction.channel.purge(limit=count)
+                await interaction.followup.send(f"🗑️ {len(deleted)} message(s) supprimé(s).", ephemeral=True)
+
+                embed = discord.Embed(
+                    title="🗑️ Purge",
+                    description=f"{len(deleted)} messages supprimés dans {interaction.channel.mention}",
+                    color=discord.Color.orange(),
+                )
+                embed.add_field(name="Modérateur", value=_format_user_label(interaction.user), inline=False)
+                await _send_log(interaction.guild, self.client, embed)
+            except Exception as e:
+                await interaction.followup.send(f"Erreur: {e}", ephemeral=True)
+
+        # --- /ban ---
+        @self.tree.command(name="ban", description="Bannir un membre")
         @app_commands.checks.has_permissions(ban_members=True)
         async def ban(
             interaction: discord.Interaction,
@@ -127,62 +211,44 @@ class ModerationCommands:
             reason: Optional[str] = None,
         ) -> None:
             if interaction.guild is None:
-                await interaction.response.send_message(
-                    "Cette commande ne peut être utilisée que sur un serveur.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
                 return
-
             if member == interaction.user:
+                await interaction.response.send_message("Tu ne peux pas te bannir toi-même.", ephemeral=True)
+                return
+            if member.top_role >= interaction.guild.me.top_role:
                 await interaction.response.send_message(
-                    "Tu ne peux pas te bannir toi-même.",
-                    ephemeral=True,
+                    "Je ne peux pas bannir ce membre (hiérarchie de rôles).", ephemeral=True
                 )
                 return
 
             reason_text = reason or "Aucune raison spécifiée."
-            member_label = _format_user_label(member)
-            moderator_label = _format_user_label(interaction.user)
-
-            embed = discord.Embed(
-                title="🚫 Bannissement",
-                description=f"{member.mention} a été banni.",
-                color=discord.Color.red(),
-            )
-            embed.add_field(name="Membre", value=member_label, inline=False)
-            embed.add_field(name="Modérateur", value=moderator_label, inline=False)
+            embed = discord.Embed(title="🚫 Bannissement", color=discord.Color.red())
+            embed.add_field(name="Membre", value=_format_user_label(member), inline=False)
+            embed.add_field(name="Modérateur", value=_format_user_label(interaction.user), inline=False)
             embed.add_field(name="Raison", value=reason_text, inline=False)
 
-            # Accuser réception rapidement pour éviter le "ne répond pas"
             await interaction.response.defer(ephemeral=False)
 
-            # Tenter d'informer le membre en DM, sans bloquer en cas d'échec
+            # Try DM before ban
             try:
-                await member.send(
-                    f"Tu as été banni de **{interaction.guild.name}**.\nRaison: {reason_text}"
-                )
+                await member.send(f"Tu as été banni de **{interaction.guild.name}**.\nRaison: {reason_text}")
             except Exception:
-                # DM refusés ou impossibles : on ignore
                 pass
 
-            # Appliquer le bannissement
             try:
                 await interaction.guild.ban(member, reason=reason_text)
+                embed.description = f"{member.mention} a été banni."
             except Exception as e:
-                embed.add_field(name="Erreur technique", value=str(e), inline=False)
+                embed.description = "Échec du bannissement."
+                embed.add_field(name="Erreur", value=str(e), inline=False)
+                logger.error("Ban failed: %s", e)
 
-            # Envoyer le résultat dans le salon où la commande a été utilisée
             await interaction.followup.send(embed=embed)
+            await _send_log(interaction.guild, self.client, embed)
 
-            # Log dans le salon de modération si configuré
-            log_channel = _get_mod_log_channel(interaction.guild, self.client)
-            if log_channel is not None:
-                try:
-                    await log_channel.send(embed=embed)
-                except Exception:
-                    pass
-
-        @self.tree.command(name="kick", description="Expulser un membre avec une raison")
+        # --- /kick ---
+        @self.tree.command(name="kick", description="Expulser un membre")
         @app_commands.checks.has_permissions(kick_members=True)
         async def kick(
             interaction: discord.Interaction,
@@ -190,54 +256,44 @@ class ModerationCommands:
             reason: Optional[str] = None,
         ) -> None:
             if interaction.guild is None:
-                await interaction.response.send_message(
-                    "Cette commande ne peut être utilisée que sur un serveur.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
                 return
-
             if member == interaction.user:
+                await interaction.response.send_message("Tu ne peux pas te kick toi-même.", ephemeral=True)
+                return
+            if member.top_role >= interaction.guild.me.top_role:
                 await interaction.response.send_message(
-                    "Tu ne peux pas te kick toi-même.",
-                    ephemeral=True,
+                    "Je ne peux pas expulser ce membre (hiérarchie de rôles).", ephemeral=True
                 )
                 return
 
             reason_text = reason or "Aucune raison spécifiée."
-            member_label = _format_user_label(member)
-            moderator_label = _format_user_label(interaction.user)
-
-            embed = discord.Embed(
-                title="🚪 Expulsion",
-                description=f"{member.mention} a été expulsé.",
-                color=discord.Color.orange(),
-            )
-            embed.add_field(name="Membre", value=member_label, inline=False)
-            embed.add_field(name="Modérateur", value=moderator_label, inline=False)
+            embed = discord.Embed(title="🚪 Expulsion", color=discord.Color.orange())
+            embed.add_field(name="Membre", value=_format_user_label(member), inline=False)
+            embed.add_field(name="Modérateur", value=_format_user_label(interaction.user), inline=False)
             embed.add_field(name="Raison", value=reason_text, inline=False)
 
+            # BUGFIX: defer first to avoid interaction timeout
+            await interaction.response.defer(ephemeral=False)
+
             try:
-                await member.send(
-                    f"Tu as été expulsé de **{interaction.guild.name}**.\nRaison: {reason_text}"
-                )
+                await member.send(f"Tu as été expulsé de **{interaction.guild.name}**.\nRaison: {reason_text}")
             except Exception:
                 pass
 
-            await interaction.guild.kick(member, reason=reason_text)
-            await interaction.response.send_message(embed=embed)
+            try:
+                await interaction.guild.kick(member, reason=reason_text)
+                embed.description = f"{member.mention} a été expulsé."
+            except Exception as e:
+                embed.description = "Échec de l'expulsion."
+                embed.add_field(name="Erreur", value=str(e), inline=False)
+                logger.error("Kick failed: %s", e)
 
-            # Log dans le salon de modération si configuré
-            log_channel = _get_mod_log_channel(interaction.guild, self.client)
-            if log_channel is not None:
-                try:
-                    await log_channel.send(embed=embed)
-                except Exception:
-                    pass
+            await interaction.followup.send(embed=embed)
+            await _send_log(interaction.guild, self.client, embed)
 
-        @self.tree.command(
-            name="timeout",
-            description="Mettre un membre en timeout pendant un certain nombre de minutes",
-        )
+        # --- /timeout ---
+        @self.tree.command(name="timeout", description="Mettre un membre en timeout")
         @app_commands.checks.has_permissions(moderate_members=True)
         async def timeout(
             interaction: discord.Interaction,
@@ -246,34 +302,30 @@ class ModerationCommands:
             reason: Optional[str] = None,
         ) -> None:
             if interaction.guild is None:
-                await interaction.response.send_message(
-                    "Cette commande ne peut être utilisée que sur un serveur.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
+                return
+            if member == interaction.user:
+                await interaction.response.send_message("Tu ne peux pas te mettre en timeout.", ephemeral=True)
                 return
 
-            if member == interaction.user:
+            # Hierarchy check
+            if member.top_role >= interaction.guild.me.top_role:
                 await interaction.response.send_message(
-                    "Tu ne peux pas te mettre en timeout toi-même.",
+                    f"Je ne peux pas mettre en timeout {member.mention} — son rôle est trop élevé.",
                     ephemeral=True,
                 )
                 return
 
             reason_text = reason or "Aucune raison spécifiée."
-            member_label = _format_user_label(member)
-            moderator_label = _format_user_label(interaction.user)
-
             until = discord.utils.utcnow() + timedelta(minutes=minutes)
 
-            embed = discord.Embed(
-                title="⏱ Timeout",
-                description=f"{member.mention} est en timeout pour {minutes} minute(s).",
-                color=discord.Color.blurple(),
-            )
-            embed.add_field(name="Membre", value=member_label, inline=False)
-            embed.add_field(name="Modérateur", value=moderator_label, inline=False)
-            embed.add_field(name="Durée", value=f"{minutes} minute(s)", inline=False)
+            embed = discord.Embed(title="⏱ Timeout", color=discord.Color.blurple())
+            embed.add_field(name="Membre", value=_format_user_label(member), inline=False)
+            embed.add_field(name="Modérateur", value=_format_user_label(interaction.user), inline=False)
+            embed.add_field(name="Durée", value=f"{minutes} minute(s)", inline=True)
             embed.add_field(name="Raison", value=reason_text, inline=False)
+
+            await interaction.response.defer(ephemeral=False)
 
             try:
                 await member.send(
@@ -283,18 +335,19 @@ class ModerationCommands:
             except Exception:
                 pass
 
-            await member.timeout(until, reason=reason_text)
-            await interaction.response.send_message(embed=embed)
+            try:
+                await member.timeout(until, reason=reason_text)
+                embed.description = f"{member.mention} est en timeout pour {minutes} minute(s)."
+            except Exception as e:
+                embed.description = "Échec du timeout."
+                embed.add_field(name="Erreur", value=str(e), inline=False)
+                logger.error("Timeout failed: %s", e)
 
-            # Log dans le salon de modération si configuré
-            log_channel = _get_mod_log_channel(interaction.guild, self.client)
-            if log_channel is not None:
-                try:
-                    await log_channel.send(embed=embed)
-                except Exception:
-                    pass
+            await interaction.followup.send(embed=embed)
+            await _send_log(interaction.guild, self.client, embed)
 
-        @self.tree.command(name="warn", description="Ajouter un avertissement à un membre")
+        # --- /warn ---
+        @self.tree.command(name="warn", description="Ajouter un avertissement")
         @app_commands.checks.has_permissions(moderate_members=True)
         async def warn(
             interaction: discord.Interaction,
@@ -302,16 +355,10 @@ class ModerationCommands:
             reason: Optional[str] = None,
         ) -> None:
             if interaction.guild is None:
-                await interaction.response.send_message(
-                    "Cette commande ne peut être utilisée que sur un serveur.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
                 return
-
             if member == interaction.user:
-                await interaction.response.send_message(
-                    "Tu ne peux pas te warn toi-même.", ephemeral=True
-                )
+                await interaction.response.send_message("Tu ne peux pas te warn toi-même.", ephemeral=True)
                 return
 
             assert interaction.user is not None
@@ -324,29 +371,24 @@ class ModerationCommands:
                 reason=reason_text,
             )
 
-            member_label = _format_user_label(member)
-            moderator_label = _format_user_label(interaction.user)
-
             embed = discord.Embed(
                 title="⚠️ Avertissement",
                 description=f"{member.mention} a reçu un avertissement.",
                 color=discord.Color.yellow(),
             )
-            embed.add_field(name="ID de l'avertissement", value=str(entry.id), inline=False)
-            embed.add_field(name="Membre", value=member_label, inline=False)
-            embed.add_field(name="Modérateur", value=moderator_label, inline=False)
+            embed.add_field(name="ID", value=f"`#{entry.id}`", inline=True)
+            embed.add_field(name="Membre", value=_format_user_label(member), inline=False)
+            embed.add_field(name="Modérateur", value=_format_user_label(interaction.user), inline=False)
             embed.add_field(name="Raison", value=reason_text, inline=False)
 
+            # Count total warnings
+            total = len(self.warning_store.get_warnings(interaction.guild.id, member.id))
+            embed.set_footer(text=f"Total avertissements: {total}")
+
             await interaction.response.send_message(embed=embed)
+            await _send_log(interaction.guild, self.client, embed)
 
-            # Log dans le salon de modération si configuré
-            log_channel = _get_mod_log_channel(interaction.guild, self.client)
-            if log_channel is not None:
-                try:
-                    await log_channel.send(embed=embed)
-                except Exception:
-                    pass
-
+        # --- /warnings ---
         @self.tree.command(name="warnings", description="Lister les avertissements d'un membre")
         @app_commands.checks.has_permissions(moderate_members=True)
         async def warnings_cmd(
@@ -354,48 +396,37 @@ class ModerationCommands:
             member: discord.Member,
         ) -> None:
             if interaction.guild is None:
-                await interaction.response.send_message(
-                    "Cette commande ne peut être utilisée que sur un serveur.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
                 return
 
             warns: List[WarningEntry] = self.warning_store.get_warnings(
-                guild_id=interaction.guild.id,
-                user_id=member.id,
+                guild_id=interaction.guild.id, user_id=member.id,
             )
 
             if not warns:
                 await interaction.response.send_message(
-                    f"{member.mention} n'a aucun avertissement.",
-                    ephemeral=True,
+                    f"{member.mention} n'a aucun avertissement.", ephemeral=True,
                 )
                 return
 
-            member_label = _format_user_label(member)
             embed = discord.Embed(
-                title="📋 Avertissements",
-                description=f"Avertissements pour {member_label}",
+                title=f"📋 Avertissements — {member}",
+                description=f"{len(warns)} avertissement(s)",
                 color=discord.Color.yellow(),
             )
 
-            # Limiter pour éviter des embeds trop gros
             for w in warns[:10]:
-                mod = f"<@{w.moderator_id}> ({w.moderator_id})"
-                value = (
-                    f"ID: `{w.id}`\n"
-                    f"Modérateur: {mod}\n"
-                    f"Date: {w.created_at}\n"
-                    f"Raison: {w.reason}"
-                )
-                embed.add_field(name=f"Warn #{w.id}", value=value, inline=False)
+                mod = f"<@{w.moderator_id}>"
+                value = f"**Modérateur:** {mod}\n**Date:** {w.created_at}\n**Raison:** {w.reason}"
+                embed.add_field(name=f"#{w.id}", value=value, inline=False)
 
             if len(warns) > 10:
-                embed.set_footer(text=f"{len(warns)} avertissement(s) au total, affichage des 10 plus récents.")
+                embed.set_footer(text=f"Affichage 10/{len(warns)} avertissements")
 
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        @self.tree.command(name="unwarn", description="Supprimer un avertissement d'un membre")
+        # --- /unwarn ---
+        @self.tree.command(name="unwarn", description="Supprimer un avertissement")
         @app_commands.checks.has_permissions(moderate_members=True)
         async def unwarn(
             interaction: discord.Interaction,
@@ -403,32 +434,26 @@ class ModerationCommands:
             warning_id: int,
         ) -> None:
             if interaction.guild is None:
-                await interaction.response.send_message(
-                    "Cette commande ne peut être utilisée que sur un serveur.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Serveur uniquement.", ephemeral=True)
                 return
 
             ok = self.warning_store.remove_warning(
-                guild_id=interaction.guild.id,
-                user_id=member.id,
-                warning_id=warning_id,
+                guild_id=interaction.guild.id, user_id=member.id, warning_id=warning_id,
             )
             if not ok:
                 await interaction.response.send_message(
-                    f"Aucun avertissement avec l'ID `{warning_id}` pour {member.mention}.",
-                    ephemeral=True,
+                    f"Aucun avertissement `#{warning_id}` pour {member.mention}.", ephemeral=True,
                 )
                 return
 
             await interaction.response.send_message(
-                f"Avertissement `{warning_id}` supprimé pour {member.mention}.",
-                ephemeral=True,
+                f"✅ Avertissement `#{warning_id}` supprimé pour {member.mention}.", ephemeral=True,
             )
 
     async def sync(self) -> None:
+        """Sync slash commands with Discord."""
         try:
-            await self.tree.sync()
-            logger.info("Commandes de modération synchronisées avec Discord.")
+            synced = await self.tree.sync()
+            logger.info("Synced %d slash command(s) with Discord.", len(synced))
         except Exception as e:
-            logger.error(f"Échec de la synchronisation des commandes de modération: {e}")
+            logger.error("Failed to sync slash commands: %s", e)
